@@ -1,0 +1,22 @@
+<Glide Version="1.0.5">
+
+	<Window Name="Main_Window" Width="320" Height="240" BackColor="000000">
+
+    <Button Name="btnPics" X="120" Y="200" Width="80" Height="32" Alpha="255" Text="Pictures" Font="4" FontColor="000000" DisabledFontColor="808080" TintColor="000000" TintAmount="0"/>
+    <Button Name="btnSettings" X="14" Y="155" Width="80" Height="32" Alpha="255" Text="Settings" Font="2" FontColor="000000" DisabledFontColor="808080" TintColor="000000" TintAmount="0"/>
+    <Button Name="btnLights" X="15" Y="199" Width="80" Height="32" Alpha="255" Text="Lights Off" Font="4" FontColor="000000" DisabledFontColor="808080" TintColor="000000" TintAmount="0"/>
+    <Button Name="btnTalk" X="225" Y="156" Width="80" Height="32" Alpha="255" Text="Talk" Font="4" FontColor="000000" DisabledFontColor="808080" TintColor="000000" TintAmount="0"/>
+    <Button Name="btnVideo" X="225" Y="197" Width="80" Height="32" Alpha="255" Text="Video" Font="4" FontColor="000000" DisabledFontColor="808080" TintColor="000000" TintAmount="0"/>
+    <Button Name="btnCamera" X="120" Y="156" Width="80" Height="32" Alpha="255" Text="Camera" Font="4" FontColor="000000" DisabledFontColor="808080" TintColor="000000" TintAmount="0"/>
+
+    <TextBlock Name="txtMainWindow" X="20" Y="52" Width="280" Height="32" Alpha="255" Text="Oak Hill Systems Touchscreen Controller" TextAlign="Center" TextVerticalAlign="Middle" Font="4" FontColor="FFFFFF" BackColor="000000" ShowBackColor="False"/>
+    <TextBlock Name="txtRover" X="116" Y="25" Width="60" Height="20" Alpha="255" Text="OakRover:" TextAlign="Left" TextVerticalAlign="Top" Font="2" FontColor="FF00FF" BackColor="000000" ShowBackColor="False"/>
+    <TextBlock Name="txtCntrlBattery" X="115" Y="5" Width="60" Height="20" Alpha="255" Text="Controller:" TextAlign="Left" TextVerticalAlign="Top" Font="2" FontColor="F0FF0F" BackColor="000000" ShowBackColor="False"/>
+
+    <ProgressBar Name="pBarRover" X="188" Y="28" Width="80" Height="16" Alpha="255" Direction="Right" MaxValue="100" Value="0"/>
+    <ProgressBar Name="pBarController" X="188" Y="6" Width="80" Height="16" Alpha="255" Direction="Right" MaxValue="100" Value="0"/>
+
+    <RadioButton Name="radBtnConnected" X="279" Y="9" Width="32" Height="32" Alpha="255" Value="" Checked="False" GroupName="radioButtonGroup" ShowBackground="True" Color="d4d4d4" OutlineColor="b8b8b8" SelectedColor="358bf6" SelectedOutlineColor="002dff"/>
+  
+  </Window>
+</Glide>

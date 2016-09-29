@@ -1,0 +1,7 @@
+<Glide Version="1.0.5">
+  <Window Name="Settings_Window" Width="320" Height="240" BackColor="E6E6E6">
+    <Button Name="nextBtn" X="260" Y="198" Width="50" Height="32" Alpha="255" Text="Next" Font="2" FontColor="000000"/>
+    <Button Name="backBtn" X="10" Y="198" Width="50" Height="32" Alpha="255" Text="Back" Font="2" FontColor="000000"/>
+    <TextBlock Name="label" X="0" Y="0" Width="320" Height="32" Alpha="255" Text="Window #2" TextAlign="Center" TextVerticalAlign="Middle" Font="4" FontColor="0"/>
+  </Window>
+</Glide>

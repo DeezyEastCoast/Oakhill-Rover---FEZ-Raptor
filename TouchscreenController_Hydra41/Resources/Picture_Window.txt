@@ -1,0 +1,5 @@
+<Glide Version="1.0.5">
+  <Window Name="Picture_Window" Width="320" Height="240" BackColor="FFFFFF">
+    <Image Name="imgPicture" X="0" Y="0" Width="320" Height="240" Alpha="255"/>
+  </Window>
+</Glide>
