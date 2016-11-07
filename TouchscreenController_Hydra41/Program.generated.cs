@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace TouchscreenController_Hydra41 {
+namespace Oakhill_Rover {
     using Gadgeteer;
     using GTM = Gadgeteer.Modules;
     
@@ -16,7 +16,7 @@ namespace TouchscreenController_Hydra41 {
     public partial class Program : Gadgeteer.Program {
         
         /// <summary>The Load module using socket 15 of the mainboard.</summary>
-        private Gadgeteer.Modules.GHIElectronics.Load load;
+        private Gadgeteer.Modules.GHIElectronics.Load loadBrd;
         
         /// <summary>The Extender module using socket 12 of the mainboard.</summary>
         private Gadgeteer.Modules.GHIElectronics.Extender extender_Motor_Servo;
@@ -58,7 +58,7 @@ namespace TouchscreenController_Hydra41 {
         }
         
         private void InitializeModules() {
-            this.load = new GTM.GHIElectronics.Load(15);
+            this.loadBrd = new GTM.GHIElectronics.Load(15);
             this.extender_Motor_Servo = new GTM.GHIElectronics.Extender(12);
             this.sdCard = new GTM.GHIElectronics.SDCard(9);
             this.extender_Battery_Input = new GTM.GHIElectronics.Extender(13);

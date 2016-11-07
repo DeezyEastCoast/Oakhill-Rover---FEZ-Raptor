@@ -10,7 +10,7 @@
     <!--This is an executable-->
     <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>TouchscreenController_Hydra41</RootNamespace>
+    <RootNamespace>Oakhill_Rover</RootNamespace>
     <AssemblyName>OakhillLandRover_Hydra42</AssemblyName>
     <TargetFrameworkVersion>v4.3</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
@@ -50,7 +50,7 @@
     <Compile Include="LSM303HDLCA.cs" />
     <Compile Include="LSM303HDLCM.cs" />
     <Compile Include="MTK3339.cs" />
-    <Compile Include="OHS_MultiCom.cs" />
+    <Compile Include="OHS_UartMux.cs" />
     <Compile Include="Program.generated.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>

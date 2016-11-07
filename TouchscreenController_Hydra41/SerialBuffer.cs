@@ -2,7 +2,7 @@ using System;
 using Microsoft.SPOT;
 using System.IO.Ports;
 
-namespace TouchscreenController_Hydra41
+namespace Oakhill_Rover
 {
     class SerialBuffer
     {

@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading;
 using System.IO.Ports;
 
-namespace TouchscreenController_Hydra41
+namespace Oakhill_Rover
 {
     #region ALCAM
 

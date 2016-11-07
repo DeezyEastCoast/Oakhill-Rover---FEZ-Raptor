@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace TouchscreenController_Hydra41
+namespace Oakhill_Rover
 {
     
     internal partial class Resources
@@ -20,7 +20,7 @@ namespace TouchscreenController_Hydra41
             {
                 if ((Resources.manager == null))
                 {
-                    Resources.manager = new System.Resources.ResourceManager("TouchscreenController_Hydra41.Resources", typeof(Resources).Assembly);
+                    Resources.manager = new System.Resources.ResourceManager("Oakhill_Rover.Resources", typeof(Resources).Assembly);
                 }
                 return Resources.manager;
             }

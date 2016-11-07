@@ -30,44 +30,132 @@ using Power_Uart_Mux;
 using Adafruit10DOFIMU;
 using Skewworks.Drivers.GPS;
 
-namespace TouchscreenController_Hydra41
+namespace Oakhill_Rover
 {
     public partial class Program
     {
         static string SD_ROOT_DIRECTORY;
-        static FileStream FILE_HANDLE;
-        static Load LoadBrdGroundEfx;
+        //static FileStream FILE_HANDLE;
+        static Load roverLoadBrd;
 
-        static GT.Timer RoverJoystickControlTimer;
+        enum DRIVE_MODE { MANUAL, ASSIST, AUTO };
+        static DRIVE_MODE SYSTEM_MODE = DRIVE_MODE.MANUAL;
+
+        static GT.Timer ManualRoverTimer;
+        static GT.Timer AutonomousRoverTimer;
         static GT.Timer ReportRoverDataTimer;
+
         static GT.Timer GroundEfxTimer; //Timer to run ground efx show
 
-        static long motorTimeout = 0;
-        static readonly byte MOTORSTOP = 135;
+        
         static bool DEBUG_LED_STATE = true;
         static bool READCOMPLETE_IMU = false;
+
+        static int MA_RANGE_INDEX = 0;
+        static int MAX_RANGE = 100;  //max range in inches to care about
+        static int MA_RANGE_PERIOD = 5;
+        static double[] MA_RANGE_ARRAY = new double[MA_RANGE_PERIOD];
+        static int sonarDistance = 0;
         //static int eraseMe = 0;
 
         static int picCounter = 0;
         //static bool roverHeadLights = false;
-        static bool roverTakePicture = false;
+        //static bool roverTakePicture = false;
 
         static GT.SocketInterfaces.AnalogInput roverDistanceSensor;
         static GT.SocketInterfaces.AnalogInput roverBatteryVoltage;
         static GT.SocketInterfaces.AnalogInput roverBatteryCurrent;
 
         static SerialPort motor_steering_ComPort;
-        static OHS_Power_Uart_Mux multiComPort;
-        static EMIC2 myVoice;
+        static OHS_UartMux muxComPort;
+        //static EMIC2 roverVoice;
+        static MTK3339 roverGPS;
+
+        #region AUTONOMOUS NAVIGATION
+        //Compass Navigation
+        static int targetHeading;  // where we want to go to reach current waypoint
+        static int currentHeading; // where we are actually facing now
+        static int headingError;  // signed (+/-) difference between targetHeading and currentHeading
+        static readonly int HEADING_TOLERANCE = 5;  // tolerance +/- (in degrees) within which we don't attempt to turn to intercept targetHeading
+
+        //GPS Navigation
+        static WAYPOINT homeWaypoint;
+        static WAYPOINT startingWaypoint;
+        static WAYPOINT currentWaypoint;
+        static WAYPOINT targetWaypoint;
+        static int distanceToTarget;  // current distance to target (current waypoint)
+        static int originalDistanceToTarget;  // distance to original waypoing when we started navigating to it
+
+        //Waypoints
+        struct WAYPOINT
+        {
+            //gps coords must be in decimal degrees
+            WAYPOINT(string inLat, string inLon, sbyte inNum = -1)
+            {
+                lat = inLat;
+                lon = inLon;
+                number = inNum;
+            }
+
+            public string lat, lon;
+
+            public double dLatitude
+            {
+                get
+                {
+                    return Convert.ToDouble(lat);
+                }
+                set
+                {
+                    dLatitude = value;
+                }
+            }
+
+            public double dLongitude
+            {
+                get
+                {
+                    return Convert.ToDouble(lon);
+                }
+                set
+                {
+                    dLongitude = value;
+                }
+            }
+
+            public int number;
+        }
+
+        static readonly int WAYPOINT_DISTANCE_TOLERANCE = 5; // tolerance in meters to waypoint; once within this tolerance, will advance to the next waypoint
+        static readonly int NUMBER_WAYPOINTS = 5; // enter the numebr of way points here (will run from 0 to (n-1))
+        static int waypointNumber = -1;  // current waypoint number; will run from 0 to (NUMBER_WAYPOINTS -1); start at -1 and gets initialized during setup()
+        static WAYPOINT[] waypointList = new WAYPOINT[NUMBER_WAYPOINTS];
+
+        //Steering/Turning
+        enum TURN { LEFT = 100, RIGHT = 200, STRAIGHT= 128 };
+        static TURN turnDirection = TURN.STRAIGHT;
+
+        //Object avoidance distances (inches)
+        static byte SAFE_DISTANCE = 70;
+        static byte TURN_DISTANCE = 40;
+        static byte STOP_DISTANCE = 12;
+
+        //Speeds 
+        static long motorTimeout = 0;
+        static byte STOP_SPEED = 135;
+        static byte FAST_SPEED = 200;
+        static byte NORMAL_SPEED = 170;
+        static byte TURN_SPEED = 150;
+        static byte SLOW_SPEED = 150;
+        static byte BACK_SPEED = 70;
+        static byte CURRENT_NAV_SPEED = NORMAL_SPEED;
+
+        #endregion
 
         #region COMMUNICATION ARRAYS
 
         static string roverData; //string sent from rover
         static string ps2DataLine;  //string received from controller
-        static string gpsDataLine; //string sent from GPS
-
-        static SerialBuffer gpsBuffer;
-
         static byte STATUS_DEVICES = 0; //byte to hold status of SDCARD, ALCAM, VOICE, etc.
 
         #endregion
@@ -94,7 +182,7 @@ namespace TouchscreenController_Hydra41
         #region ALCAM
 
         //UART SETUP
-        Microsoft.SPOT.Hardware.Cpu.Pin GPIO_Pin_Port6_Pin3; //pin 3
+        //Microsoft.SPOT.Hardware.Cpu.Pin GPIO_Pin_Port6_Pin3; //pin 3
         //Microsoft.SPOT.Hardware.Cpu.Pin RTS_Pin_Port6;  //pin 6
         //Microsoft.SPOT.Hardware.Cpu.Pin CTS_Pin_Port6;  //pin 7
         //string comPortNameAlcam;
@@ -113,9 +201,9 @@ namespace TouchscreenController_Hydra41
         //use pin 5 as SSEL
         //use pin 6 as BUSYpin
 
-        Microsoft.SPOT.Hardware.SPI.SPI_module SPI1 = Microsoft.SPOT.Hardware.SPI.SPI_module.SPI1;
-        Microsoft.SPOT.Hardware.Cpu.Pin _BUSYpin;
-        Microsoft.SPOT.Hardware.Cpu.Pin _SSEL;
+        //Microsoft.SPOT.Hardware.SPI.SPI_module SPI1 = Microsoft.SPOT.Hardware.SPI.SPI_module.SPI1;
+        //Microsoft.SPOT.Hardware.Cpu.Pin _BUSYpin;
+        //Microsoft.SPOT.Hardware.Cpu.Pin _SSEL;
         //private static Zigbee2B zigbeeWireless = new Zigbee2B(SPI1, _chipSelectPin, _chipEnablePin, _interruptPin);
 
         #endregion
@@ -173,8 +261,8 @@ namespace TouchscreenController_Hydra41
             roverBatteryCurrent = extender_Battery_Input.CreateAnalogInput(GT.Socket.Pin.Five);
             roverBatteryVoltage = extender_Battery_Input.CreateAnalogInput(GT.Socket.Pin.Four);
             roverDistanceSensor = extender_Battery_Input.CreateAnalogInput(GT.Socket.Pin.Three);
-            
-            LoadBrdGroundEfx = load;
+
+            roverLoadBrd = loadBrd;
 
             try
             {
@@ -239,7 +327,7 @@ namespace TouchscreenController_Hydra41
                     
                 };
             IMU_Adafruit.ContinuousRead = true;
-            //IMU_Adafruit.BeginAsync();
+            IMU_Adafruit.BeginAsync();
 
             #endregion
 
@@ -306,9 +394,20 @@ namespace TouchscreenController_Hydra41
 
             #endregion
 
+            #region LINKSPRITE CAMWERA
+            //camPortName = GT.Socket.GetSocket(6, false, null, null).SerialPortName;
+            //camComPort = new SerialPort(camPortName, 38400);
+            //LINKSPRITE_CAMERA = new LinkspriteCamera(camComPort);
+            //LINKSPRITE_CAMERA = new LinkspriteCamera(multiComPort.MuxComPort);
+            #endregion
+
+            #region EMIC 2 VOICE
+
+            //myVoice = new EMIC2(multiComPort.MuxComPort);
+
             ////set com port 0 for EMIC 2 at 9600
             ////set com port 1 for Linksprite Camera at 38400
-            multiComPort = new OHS_Power_Uart_Mux(4, 9600, 38400, 9600, 9600);        
+            //multiComPort = new OHS_Power_Uart_Mux(4, 9600, 38400, 9600, 9600);        
             ////settings for EMIC, see if it affects other devices on mux port
             //multiComPort.MuxComPort.Close();
             //multiComPort.MuxComPort.WriteTimeout = 500;
@@ -316,9 +415,6 @@ namespace TouchscreenController_Hydra41
             //multiComPort.MuxComPort.Open();
             //multiComPort.writeMuxCom(new byte[] { 0x41, 0x42, 0x43, 0x0d, 0x0a }, 3); //test debug port 3
 
-            #region EMIC 2 VOICE
-
-            //myVoice = new EMIC2(multiComPort.MuxComPort);
             /*
             //Talk to EMIC
             myVoice.changeVolume(13);
@@ -337,38 +433,51 @@ namespace TouchscreenController_Hydra41
              */
             #endregion
 
+            #region GPS
+
+            muxComPort = new OHS_UartMux(4);
+            Power_Uart_Mux.OHS_UartMux.myActiveComPort = 0;
+            roverGPS = new MTK3339(Gadgeteer.Socket.GetSocket(4, true, null, null).SerialPortName, MTK3339.SubscriptionLevels.RMCGGA, MTK3339.UpdateRates.GPS_1HZ);
+            //GPS.CoordinatesUpdated += GPS_CoordinatesUpdated;
+
+            //void GPS_CoordinatesUpdated(MTK3339 sender)
+            //{
+            //    Debug.Print("Coordinates: " + roverGPS.Latitude + ", " + roverGPS.Longitude + " (" + roverGPS.MapLatitude + ", " + roverGPS.MapLongitude + ")");
+            //}
+
+            #endregion
+
             #region TIMERS
 
-            RoverJoystickControlTimer = new GT.Timer(50);
-            RoverJoystickControlTimer.Tick += new GT.Timer.TickEventHandler(RoverJoystickControlTimer_Tick);
-            //RoverJoystickControlTimer.Start();
+            ManualRoverTimer = new GT.Timer(50);
+            ManualRoverTimer.Tick += new GT.Timer.TickEventHandler(ManualRoverTimer_Tick);
+            ManualRoverTimer.Start();
+
+            AutonomousRoverTimer = new GT.Timer(100);
+            AutonomousRoverTimer.Tick += new GT.Timer.TickEventHandler(AutonomousRoverTimer_Tick);
+            //AutonomousRoverTimer.Start();
 
             ReportRoverDataTimer = new GT.Timer(500);
             ReportRoverDataTimer.Tick += new GT.Timer.TickEventHandler(ReportRoverDataTimer_Tick);
             ReportRoverDataTimer.Start();
 
-            GroundEfxTimer = new GT.Timer(250);
+            GroundEfxTimer = new GT.Timer(500);
             GroundEfxTimer.Tick += new GT.Timer.TickEventHandler(GroundEfxTimer_Tick);
             //GroundEfxTimer.Start();
 
             #endregion
 
-            //camPortName = GT.Socket.GetSocket(6, false, null, null).SerialPortName;
-            //camComPort = new SerialPort(camPortName, 38400);
-            //LINKSPRITE_CAMERA = new LinkspriteCamera(camComPort);
-            //LINKSPRITE_CAMERA = new LinkspriteCamera(multiComPort.MuxComPort);
-
             //display_T35.SimpleGraphics.DisplayImage(SD_ROOT_DIRECTORY + @"\roverPic17.jpg", Bitmap.BitmapImageType.Jpeg, 0, 0);
-
-            gpsBuffer = new SerialBuffer(72);
         }
+
+
 
         #region TIMERS
 
         /// <summary>
-        /// Timer handler to get commands from joystic. Drives rover.
+        /// Timer handler to manually driver rover. Get commands from joystick.
         /// </summary>
-        static void RoverJoystickControlTimer_Tick(GT.Timer timer)
+        static void ManualRoverTimer_Tick(GT.Timer timer)
         {
             //start_time = DateTime.Now;
             motorTimeout++;
@@ -477,7 +586,7 @@ namespace TouchscreenController_Hydra41
                 Mainboard.SetDebugLED(false);
 
                 //stop motor
-                motorSpeed(MOTORSTOP);
+                motorSpeed(STOP_SPEED);
 
                 motorTimeout = 76;
             }
@@ -488,38 +597,70 @@ namespace TouchscreenController_Hydra41
             //Debug.Print("Total time in seconds: " + ((float)ts.Ticks / TimeSpan.TicksPerSecond).ToString() + " seconds");
         }
 
+        static void AutonomousRoverTimer_Tick(GT.Timer timer)
+        {
+            //check kill switch
+
+            //get current GPS position --------- PUT A VALID LOCK/FIX CHECK ON GPS
+            currentWaypoint.dLatitude = roverGPS.MapLatitude;
+            currentWaypoint.dLongitude = roverGPS.MapLongitude;
+            // Process GPS -- update the course and distance to waypoint based on our new position
+            distanceToWaypoint();
+            courseToWaypoint();   
+
+            //check sonar distance
+            sonarDistance = getSonarRangeAvg();
+
+            //get current compass heading
+            if (READCOMPLETE_IMU)
+            {
+                currentHeading = (int)IMU_Adafruit.Heading;
+                calcDesiredTurn();
+
+                READCOMPLETE_IMU = false;
+
+                IMU_Adafruit.ContinuousRead = true;
+                IMU_Adafruit.BeginAsync();
+            }
+
+            //output oakhill rover autonomous
+            roverData = "$ORA," +
+                        getSonarRangeAvg() + " in"
+                        + "," + IMU_Adafruit.Heading + " deg"
+                        + "," + roverGPS.MapLatitude
+                        + "," + roverGPS.MapLongitude
+                //+ "," + (1.0 - ((IMU_Adafruit.Bmp180.Pressure/101910)^.19)) //convert pressure to altitude in meters, 1019.1hPa as sealevel in Pawtucket
+                        + "*";
+            roverData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(roverData)))) + "\r\n"); //add checksum, cr and lf
+
+            //Debug.Print(roverData);
+            lairdComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
+
+        }
+
         /// <summary>
         /// Timer handler to report Rover data to controller.
         /// </summary>
         void ReportRoverDataTimer_Tick(GT.Timer timer)
         {
-            //DEBUG_LED_STATE = !DEBUG_LED_STATE;
-            //Mainboard.SetDebugLED(DEBUG_LED_STATE);
-
-            //getPicture();
-
-            //eraseMe = (eraseMe + 1) % 4;
-            //multiComPort.writeMuxCom(Encoding.UTF8.GetBytes("Hi from port " + eraseMe.ToString()+ ".\n\r"), eraseMe );
-            //multiComPort.writeMultiCom(Encoding.UTF8.GetBytes("HI"), 3);
-
-            gpsBuffer.LoadSerial(multiComPort.MuxComPort);
-            if ((gpsDataLine = gpsBuffer.ReadLine()) != null) { Debug.Print(gpsDataLine);}
-
             if (READCOMPLETE_IMU)
             {
                 //output oakhill rover data
                 roverData = "$ORD," +
                                     getBatteryVoltage() + " V"
                             + "," + getBatteryCurrent() + " A"
-                            + "," + getRangeFwd() + " in"
+                            + "," + getSonarRangeAvg() + " in"
                             + "," + IMU_Adafruit.Heading + " deg"
                             + "," + ((IMU_Adafruit.Bmp180.Temperature * 1.8000) + 32).ToString().Substring(0, 4) + " F"
                             + "," + (IMU_Adafruit.Bmp180.Pressure / 6895).ToString().Substring(0, 4) + " psi"
+                            + "," + roverGPS.Latitude
+                            + "," + roverGPS.Longitude
                             //+ "," + (1.0 - ((IMU_Adafruit.Bmp180.Pressure/101910)^.19)) //convert pressure to altitude in meters, 1019.1hPa as sealevel in Pawtucket
                             + "*";
                 roverData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(roverData)))) + "\r\n"); //add checksum, cr and lf
                 READCOMPLETE_IMU = false;
 
+                //Debug.Print(roverData);
                 lairdComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
 
                 IMU_Adafruit.ContinuousRead = true;
@@ -650,8 +791,10 @@ namespace TouchscreenController_Hydra41
         /// <param name="speed">Relative motor speed. (0 to 255, 75 = center & null)</param>
         static void motorSpeed(byte speedCmd)
         {
-            //0x00 is full rev on trigger, about 75 is center, 0xFF (255) is full forward on trigger
+            //0x00 is full rev on controller trigger, about 75 is center, 0xFF (255) is full forward on trigger
             //about 139 is start of forward on truck, 255 is max forward speed.
+            //on landRover  0 to 134 is reverse, 135 = stop, 136 to 255 is forward.
+            //about 139 is start of forward on truck
 
             //if ((speedCmd > 70) && (speedCmd < 90)) speedCmd = MOTORSTOP; //deadband around neutral
             //else if (speedCmd >= 90) speedCmd = (byte)convertLinearScale(speedCmd, 90, 255, 136, 255);
@@ -732,33 +875,33 @@ namespace TouchscreenController_Hydra41
             switch (leftColor)
             {
                 case "Red":
-                    LoadBrdGroundEfx.P3.Write(true);
+                    roverLoadBrd.P3.Write(true);
                     break;
 
                 case "RedOff":
-                    LoadBrdGroundEfx.P3.Write(false);
+                    roverLoadBrd.P3.Write(false);
                     break;
 
                 case "Blue":
-                    LoadBrdGroundEfx.P2.Write(true);
+                    roverLoadBrd.P2.Write(true);
                     break;
 
                 case "BlueOff":
-                    LoadBrdGroundEfx.P2.Write(false);
+                    roverLoadBrd.P2.Write(false);
                     break;
 
                 case "Green":
-                    LoadBrdGroundEfx.P1.Write(true);
+                    roverLoadBrd.P1.Write(true);
                     break;
 
                 case "GreenOff":
-                    LoadBrdGroundEfx.P1.Write(false);
+                    roverLoadBrd.P1.Write(false);
                     break;
 
                 case "Off":
-                    LoadBrdGroundEfx.P1.Write(false);
-                    LoadBrdGroundEfx.P2.Write(false);
-                    LoadBrdGroundEfx.P3.Write(false);
+                    roverLoadBrd.P1.Write(false);
+                    roverLoadBrd.P2.Write(false);
+                    roverLoadBrd.P3.Write(false);
                     break;
 
                 default:
@@ -769,33 +912,33 @@ namespace TouchscreenController_Hydra41
             switch (rightColor)
             {
                 case "Red":
-                    LoadBrdGroundEfx.P5.Write(true);
+                    roverLoadBrd.P5.Write(true);
                     break;
 
                 case "RedOff":
-                    LoadBrdGroundEfx.P5.Write(false);
+                    roverLoadBrd.P5.Write(false);
                     break;
 
                 case "Blue":
-                    LoadBrdGroundEfx.P6.Write(true);
+                    roverLoadBrd.P6.Write(true);
                     break;
 
                 case "BlueOff":
-                    LoadBrdGroundEfx.P6.Write(false);
+                    roverLoadBrd.P6.Write(false);
                     break;
 
                 case "Green":
-                    LoadBrdGroundEfx.P7.Write(true);
+                    roverLoadBrd.P7.Write(true);
                     break;
 
                 case "GreenOff":
-                    LoadBrdGroundEfx.P7.Write(false);
+                    roverLoadBrd.P7.Write(false);
                     break;
 
                 case "Off":
-                    LoadBrdGroundEfx.P5.Write(false);
-                    LoadBrdGroundEfx.P6.Write(false);
-                    LoadBrdGroundEfx.P7.Write(false);
+                    roverLoadBrd.P5.Write(false);
+                    roverLoadBrd.P6.Write(false);
+                    roverLoadBrd.P7.Write(false);
                     break;
 
                 default:
@@ -831,12 +974,12 @@ namespace TouchscreenController_Hydra41
                 }
             }
 
-            LoadBrdGroundEfx.P1.Write(lightStates[0]);
-            LoadBrdGroundEfx.P2.Write(lightStates[1]);
-            LoadBrdGroundEfx.P3.Write(lightStates[2]);
-            LoadBrdGroundEfx.P5.Write(lightStates[3]);
-            LoadBrdGroundEfx.P6.Write(lightStates[4]);
-            LoadBrdGroundEfx.P7.Write(lightStates[5]);
+            roverLoadBrd.P1.Write(lightStates[0]);
+            roverLoadBrd.P2.Write(lightStates[1]);
+            roverLoadBrd.P3.Write(lightStates[2]);
+            roverLoadBrd.P5.Write(lightStates[3]);
+            roverLoadBrd.P6.Write(lightStates[4]);
+            roverLoadBrd.P7.Write(lightStates[5]);
         }
 
         #endregion
@@ -1083,6 +1226,239 @@ namespace TouchscreenController_Hydra41
             return (int)tempRange;
         }
 
+        /// <summary>
+        /// Get the moving average of the ultrasonic range sensor
+        /// </summary>
+        /// <returns></returns>
+        static int getSonarRangeAvg()
+        {
+            double tempRange;
+            double MA_RANGE = 0;
+
+            //pin 3 port 13 is ultrasonic distance sensor Vcc/512 per inch --> 6.4mV per inch
+            tempRange = roverDistanceSensor.ReadVoltage();
+
+            MA_RANGE_ARRAY[MA_RANGE_INDEX] = tempRange / (.0064 * MA_RANGE_PERIOD);
+
+            for (int i = 0; i < MA_RANGE_PERIOD; i++)
+                MA_RANGE += MA_RANGE_ARRAY[i];
+
+            MA_RANGE_INDEX = (MA_RANGE_INDEX+1) % MA_RANGE_PERIOD;
+
+            //Debug.Print("MA Range: " + MA_RANGE.ToString() + " inches\n\r");
+
+            return (int)MA_RANGE;
+        }
+        
+        #region NAVIGATION METHODS
+        static void calcDesiredTurn()
+        {
+            // calculate where we need to turn to head to destination
+            headingError = targetHeading - currentHeading;
+
+            // adjust for compass wrap
+            if (headingError < -180)
+                headingError += 360;
+            if (headingError > 180)
+                headingError -= 360;
+
+            // calculate which way to turn to intercept the targetHeading
+            if (System.Math.Abs(headingError) <= HEADING_TOLERANCE)      // if within tolerance, don't turn
+                turnDirection = TURN.STRAIGHT;
+            else if (headingError < 0)
+                turnDirection = TURN.LEFT;
+            else if (headingError > 0)
+                turnDirection = TURN.RIGHT;
+            else
+                turnDirection = TURN.STRAIGHT;
+        }
+
+        /// <summary>
+        /// returns distance in meters between two positions, both specified 
+        // as signed decimal-degrees latitude and longitude. Uses great-circle 
+        // distance computation for hypothetical sphere of radius 6372795 meters.
+        // Because Earth is no exact sphere, rounding errors may be up to 0.5%.
+        // copied from TinyGPS library
+        /// </summary>
+        /// <returns>Distance in meters between two GPS positions</returns>
+        static int distanceToWaypoint()
+        {
+            double delta = ((System.Math.PI/180)*(currentWaypoint.dLongitude - targetWaypoint.dLongitude)); //convert the angular difference to radians
+            double sdlong = System.Math.Sin(delta);
+            double cdlong = System.Math.Cos(delta);
+            double lat1 = (System.Math.PI / 180) * (currentWaypoint.dLatitude); //convert to radians
+            double lat2 = (System.Math.PI / 180) * (targetWaypoint.dLatitude); //convert to radians
+            double slat1 = System.Math.Sin(lat1);
+            double clat1 = System.Math.Cos(lat1);
+            double slat2 = System.Math.Sin(lat2);
+            double clat2 = System.Math.Cos(lat2);
+            delta = (clat1 * slat2) - (slat1 * clat2 * cdlong);
+            delta = delta * delta;
+            delta += (clat2 * sdlong * clat2 * sdlong);
+            delta = System.Math.Sqrt(delta);
+            double denom = (slat1 * slat2) + (clat1 * clat2 * cdlong);
+            delta = System.Math.Atan2(delta, denom);
+            distanceToTarget = (int)(delta * 6372795);
+
+            // check to see if we have reached the current waypoint
+            if (distanceToTarget <= WAYPOINT_DISTANCE_TOLERANCE)
+                nextWaypoint();
+
+            return distanceToTarget;
+        }  // distanceToWaypoint()
+
+        static void nextWaypoint()
+        {
+            waypointNumber++;
+            targetWaypoint.dLatitude = waypointList[waypointNumber].dLatitude;
+            targetWaypoint.dLongitude = waypointList[waypointNumber].dLongitude;
+
+            if ((targetWaypoint.dLatitude == 0 && targetWaypoint.dLongitude == 0) || waypointNumber >= NUMBER_WAYPOINTS)    // last waypoint reached? 
+            {
+                //end mission
+                //stop motor and neutral steering
+                motorSpeed(STOP_SPEED);
+                servoAngle((byte)TURN.STRAIGHT);
+
+                //send mission complete msg to controller
+            }
+
+            // update the course and distance to waypoint based on our new position
+            distanceToWaypoint();
+            courseToWaypoint();
+            distanceToTarget = originalDistanceToTarget = distanceToWaypoint();
+            courseToWaypoint();
+
+        }  // nextWaypoint()
+
+        
+        /// <summary>
+        /// returns course in degrees (North=0, West=270) from position 1 to position 2,
+        /// both specified as signed decimal-degrees latitude and longitude.
+        /// Because Earth is no exact sphere, calculated course may be off by a tiny fraction.
+        /// copied from TinyGPS library
+        /// </summary>
+        /// <returns>Course in degrees (North=0, West=270) from position 1 to position 2</returns>
+        static int courseToWaypoint()
+        {
+            double dlon = ((System.Math.PI / 180) * (targetWaypoint.dLongitude - currentWaypoint.dLongitude));
+            double cLat = (System.Math.PI / 180) * (currentWaypoint.dLatitude);
+            double tLat = (System.Math.PI / 180) * (targetWaypoint.dLatitude);
+            double a1 = System.Math.Sin(dlon) * System.Math.Cos(tLat);
+            double a2 = System.Math.Sin(cLat) * System.Math.Cos(tLat) * System.Math.Cos(dlon);
+            a2 = System.Math.Cos(cLat) * System.Math.Sin(tLat) - a2;
+            a2 = System.Math.Atan2(a1, a2);
+            if (a2 < 0.0)
+            {
+                a2 += (2*System.Math.PI);
+            }
+            targetHeading = (int)((a2*180)/System.Math.PI);
+            return targetHeading;
+        }   
+
+        /// <summary>
+        /// Drive and avoid obstacles if necessary.
+        /// </summary>
+        static void moveAndAvoid()
+        {
+            if (sonarDistance >= SAFE_DISTANCE)       // no close objects in front of car
+            {
+                if (turnDirection == TURN.STRAIGHT)
+                    CURRENT_NAV_SPEED = FAST_SPEED;
+                else
+                    CURRENT_NAV_SPEED = TURN_SPEED;
+
+                servoAngle((byte)turnDirection);
+                motorSpeed(CURRENT_NAV_SPEED);
+
+                return;
+            }
+
+            if (sonarDistance > TURN_DISTANCE && sonarDistance < SAFE_DISTANCE)    // not yet time to turn, but slow down
+            {
+                if (turnDirection == TURN.STRAIGHT)
+                    CURRENT_NAV_SPEED = NORMAL_SPEED;
+                else
+                {
+                    CURRENT_NAV_SPEED = TURN_SPEED;
+                    servoAngle((byte)turnDirection);     // alraedy turning to navigate
+                }
+                motorSpeed(CURRENT_NAV_SPEED);
+                return;
+            }
+
+            if (sonarDistance < TURN_DISTANCE && sonarDistance > STOP_DISTANCE)  // getting close, time to turn to avoid object        
+            {
+                CURRENT_NAV_SPEED = SLOW_SPEED;
+                motorSpeed(CURRENT_NAV_SPEED);      // slow down
+
+                switch (turnDirection)
+                {
+                    case TURN.STRAIGHT:                  // going straight currently, so start new turn
+                        {
+                            if (headingError <= 0)
+                                turnDirection = TURN.LEFT;
+                            else
+                                turnDirection = TURN.RIGHT;
+                            servoAngle((byte)turnDirection);  // turn in the new direction
+                            break;
+                        }
+                    case TURN.LEFT:                         // if already turning left, try right
+                        {
+                            servoAngle((byte)TURN.RIGHT);
+                            break;
+                        }
+                    case TURN.RIGHT:                       // if already turning right, try left
+                        {
+                            servoAngle((byte)TURN.LEFT);
+                            break;
+                        }
+                } // end SWITCH
+
+                return;
+            }
+
+
+            if (sonarDistance < STOP_DISTANCE)          // too close, stop and back up
+            {
+                motorSpeed(STOP_SPEED);             // stop 
+                servoAngle((byte)TURN.STRAIGHT);             // straighten up
+                turnDirection = TURN.STRAIGHT;
+                motorSpeed(BACK_SPEED);  // go back at higher speed
+
+                while (sonarDistance < TURN_DISTANCE)       // backup until we get safe clearance
+                {
+                    //get current GPS position --------- PUT A VALID LOCK/FIX CHECK ON GPS
+                    currentWaypoint.lat = roverGPS.Latitude;
+                    currentWaypoint.lon = roverGPS.Longitude;
+                    // Process GPS -- update the course and distance to waypoint based on our new position
+                    distanceToWaypoint();
+                    courseToWaypoint(); 
+
+                    //get current compass heading
+                    if (READCOMPLETE_IMU)
+                    {
+                        currentHeading = (int)IMU_Adafruit.Heading;
+                        calcDesiredTurn();  // calculate how we would optimatally turn, without regard to obstacles   
+
+                        READCOMPLETE_IMU = false;
+
+                        IMU_Adafruit.ContinuousRead = true;
+                        IMU_Adafruit.BeginAsync();
+                    }
+                
+                    //check sonar distance
+                    sonarDistance = getSonarRangeAvg();
+                    //updateDisplay();
+                    Thread.Sleep(100);
+                } // while (sonarDistance < TURN_DISTANCE)
+                motorSpeed(STOP_SPEED);         // stop backing up
+                return;
+            } // end of IF TOO CLOSE
+
+        }
+
+        #endregion
         /// <summary>
         /// Linearly scales standard 0 to 3.3V input.
         /// </summary>

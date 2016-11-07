@@ -5,7 +5,7 @@ using System.Threading;
 
 using Microsoft.SPOT;
 
-namespace TouchscreenController_Hydra41
+namespace Oakhill_Rover
 {
     public class EMIC2
     {

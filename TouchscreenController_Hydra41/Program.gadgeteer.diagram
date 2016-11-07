@@ -127,7 +127,7 @@
         <socketShapeMoniker Id="2695a57a-bcb5-4a58-856c-e8d52473d4f2" />
       </nodes>
     </socketConnector>
-    <socketConnector Id="86221cd9-8785-4bd1-ba37-bf1b330a1be4" edgePoints="[(6.92877952401138 : 7.145); (6.12833333333333 : 7.145 : JumpStart); (5.96166666666667 : 7.145 : JumpEnd); (5.505 : 7.145); (5.505 : 5.81358267849573)]" fixedFrom="NotFixed" fixedTo="NotFixed">
+    <socketConnector Id="86221cd9-8785-4bd1-ba37-bf1b330a1be4" edgePoints="[(6.92877952401138 : 7.145); (5.505 : 7.145); (5.505 : 5.81358267849573)]" fixedFrom="NotFixed" fixedTo="NotFixed">
       <socketUseReferencesSocketMoniker Id="ea564cf6-0fbe-49f0-948b-b0d2930a35c5" />
       <nodes>
         <socketUseShapeMoniker Id="d96f49da-eac9-439e-9205-7ad89fad00ad" />
@@ -162,7 +162,7 @@
         </socketUseShape>
       </nestedChildShapes>
     </moduleShape>
-    <socketConnector Id="7c9cc527-96bc-4a52-951a-fb4c1f84d0ec" edgePoints="[(11.3 : 2.545); (10.7832419863854 : 2.545); (10.7832419863854 : 1.67770833333333); (6.045 : 1.67770833333333); (6.045 : 2.66)]" manuallyRouted="true" fixedFrom="Algorithm" fixedTo="Algorithm">
+    <socketConnector Id="7c9cc527-96bc-4a52-951a-fb4c1f84d0ec" edgePoints="[(11.3 : 2.545); (10.7832419863854 : 2.545); (10.7832419863854 : 1.67770833333333); (6.045 : 1.67770833333333); (6.045 : 2.66)]" manuallyRouted="true" fixedFrom="NotFixed" fixedTo="NotFixed">
       <socketUseReferencesSocketMoniker Id="86950e55-111b-4f27-8951-a43a261ae861" />
       <nodes>
         <socketUseShapeMoniker Id="2605c4c7-6398-46b6-adcf-4f74a9ce36f0" />
@@ -181,7 +181,7 @@
         </socketUseShape>
       </nestedChildShapes>
     </moduleShape>
-    <socketConnector Id="f579b188-f3d1-4dbb-9a05-4afc0a0cd1a4" edgePoints="[(9.28 : 2.565); (8.56528228108763 : 2.565); (8.56528228108763 : 1.97770833333333); (6.965 : 1.97770833333333); (6.965 : 2.66)]" manuallyRouted="true" fixedFrom="Algorithm" fixedTo="Algorithm">
+    <socketConnector Id="f579b188-f3d1-4dbb-9a05-4afc0a0cd1a4" edgePoints="[(9.28 : 2.565); (8.56528228108763 : 2.565); (8.56528228108763 : 1.97770833333333); (6.965 : 1.97770833333333); (6.965 : 2.66)]" manuallyRouted="true" fixedFrom="NotFixed" fixedTo="NotFixed">
       <socketUseReferencesSocketMoniker Id="a111bc51-049a-4ae1-aae1-e2cadea725c1" />
       <nodes>
         <socketUseShapeMoniker Id="3e0632e8-3e93-4408-9c3a-5926609dae46" />
