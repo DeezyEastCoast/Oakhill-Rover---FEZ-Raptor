@@ -44,6 +44,11 @@ namespace Power_Uart_Mux
             muxS0 = new Microsoft.SPOT.Hardware.OutputPort(muxS0Pin, false);
             muxS1 = new Microsoft.SPOT.Hardware.OutputPort(muxS1Pin, false);
             muxEn = new Microsoft.SPOT.Hardware.OutputPort(muxEnPin, false); //active low enable
+
+            //for compass calibration
+            //MuxComPort = new SerialPort(MuxComPortName,115200);
+           // MuxComPort.Open();
+
         }
 
         /// <summary>
@@ -92,18 +97,18 @@ namespace Power_Uart_Mux
         {
             set
             {
-                if ((value >= 0) && (value <= 3))
+                //switch baud rate if necessary
+                if (value != activeMuxComPort)
                 {
                     //disable mux
                     EnableMuxCom = false;
 
-                    //switch baud rate if necessary
-                    if (value != activeMuxComPort)
+                    if ((value >= 0) && (value <= 3))
                     {
                         MuxComPort.Close();
                         MuxComPort.BaudRate = MuxBaudRates[value];
-                        MuxComPort.WriteTimeout = 500; //used for EMIC voic device
-                        MuxComPort.ReadTimeout = 500;
+                        //MuxComPort.WriteTimeout = 500; //used for EMIC voic device
+                        //MuxComPort.ReadTimeout = 500;
                         MuxComPort.Open();
                     }
 

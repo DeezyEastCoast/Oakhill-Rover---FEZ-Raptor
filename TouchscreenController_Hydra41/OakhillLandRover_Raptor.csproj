@@ -49,6 +49,7 @@
     <Compile Include="L3GD20.cs" />
     <Compile Include="LSM303HDLCA.cs" />
     <Compile Include="LSM303HDLCM.cs" />
+    <Compile Include="MahonyAHRS.cs" />
     <Compile Include="MTK3339.cs" />
     <Compile Include="OHS_UartMux.cs" />
     <Compile Include="Program.generated.cs">
