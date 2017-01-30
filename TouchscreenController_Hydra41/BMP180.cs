@@ -9,7 +9,7 @@ namespace Adafruit10DOFIMU
     /// </summary>
 	public class BMP180 : SensorBase
 	{
-		public enum OSR
+		public enum BMP085_MODE
 		{
 			Ultra_Low = 0,
 			Standard = 1,
@@ -52,12 +52,12 @@ namespace Adafruit10DOFIMU
 		short _MB = -32768;
 		short _MC = -8711;
 		short _MD = 2868;
-		OSR _OSR;
+		BMP085_MODE _OSR;
 
 
 
 
-		public BMP180(OSR oSR = OSR.Ultra_Low)
+		public BMP180(BMP085_MODE oSR = BMP085_MODE.Ultra_Low)
 		{
 			_Configuration = new Microsoft.SPOT.Hardware.I2CDevice.Configuration(0x77, 400);
 			_OSR = oSR;
@@ -86,6 +86,19 @@ namespace Adafruit10DOFIMU
 			_MD = (short)(md[0] << 8 | md[1]);
 		}
 
+        /// <summary>
+        /// Check that device is responsive.
+        /// </summary>
+        /// <returns></returns>
+        public override bool IsAlive()
+        {
+            byte id = 0;
+
+            id = base.Read(BMP085_REGISTER_CHIPID);
+            if (id != 0x55) return false;
+
+            return true;
+        }
 
 		public override bool Read()
 		{
@@ -98,77 +111,114 @@ namespace Adafruit10DOFIMU
 
 		private short CalculateTrueTemperature()
 		{
-			//Start temperature conversion
-			base.Write(BMP085_REGISTER_CONTROL, BMP085_REGISTER_READTEMPCMD);
+            try
+            {
+                //Start temperature conversion
+                base.Write(BMP085_REGISTER_CONTROL, BMP085_REGISTER_READTEMPCMD);
 
-			//This should give the device plenty of time to complete the conversion.
-			Thread.Sleep(30);
+                //This should give the device plenty of time to complete the conversion.
+                Thread.Sleep(30);
 
-			//Read the temperature values
-			var msb = base.Read(REGISTER_MSB);
-			var lsb = base.Read(REGISTER_LSB);
+                //Read the temperature values
+                var msb = base.Read(REGISTER_MSB);
+                var lsb = base.Read(REGISTER_LSB);
 
-			short ut = (short)((msb << 8) + lsb);
+                short ut = (short)((msb << 8) + lsb);
 
-			var x1 = ((ut - _AC6) * _AC5) >> 15;
-			var x2 = (_MC << 11) / (x1 + _MD);
+                var x1 = ((ut - _AC6) * _AC5) >> 15;
+                var x2 = (_MC << 11) / (x1 + _MD);
 
-			var temp = (short)((x1 + x2 + 8) >> 4);
+                var temp = (short)((x1 + x2 + 8) >> 4);
 
-
-			return temp;
+                return temp;
+            }
+            catch(Exception)
+            {
+                Debug.Print("BMP180 -- CalculateTrueTemperature Exception\n\r");
+                return 0;
+            }
 		}
-
 
 		public float CalculateTruePressure()
 		{
-			var temp = CalculateTrueTemperature();
+            
+           var temp = CalculateTrueTemperature();
 
-			//Start Pressure conversion
-			base.Write(BMP085_REGISTER_CONTROL, (byte)(BMP085_REGISTER_READPRESSURECMD + ((byte)_OSR << 6)));
+              try
+              {
+                //Start Pressure conversion
+                base.Write(BMP085_REGISTER_CONTROL, (byte)(BMP085_REGISTER_READPRESSURECMD + ((byte)_OSR << 6)));
 
-			//This should give the device plenty of time to complete its conversion.
-			Thread.Sleep(75);
+                //This should give the device plenty of time to complete its conversion.
+                Thread.Sleep(75);
 
-			//Read the temperature values
-			float uP = ((base.Read(REGISTER_MSB) << 16 | base.Read(REGISTER_LSB) << 8) | base.Read(REGISTER_XLSB)) >> (8 - (int)_OSR);
+                //Read the temperature values
+                float uP = ((base.Read(REGISTER_MSB) << 16 | base.Read(REGISTER_LSB) << 8) | base.Read(REGISTER_XLSB)) >> (8 - (int)_OSR);
 
-			var b6 = temp - 4000;
+                var b6 = temp - 4000;
 
-			long x1 = (_B2 * ((b6 * b6) >> 12)) >> 11;
-			long x2 = (_AC2 * b6) >> 11;
-			long x3 = x1 + x2;
-			long b3 = (((_AC1 * 4 + x3) << (int)_OSR) + 2) >> 2;
+                long x1 = (_B2 * ((b6 * b6) >> 12)) >> 11;
+                long x2 = (_AC2 * b6) >> 11;
+                long x3 = x1 + x2;
+                long b3 = (((_AC1 * 4 + x3) << (int)_OSR) + 2) >> 2;
 
-			x1 = (_AC3 * b6) >> 13;
-			x2 = (_B1 * ((b6 * b6) >> 12)) >> 16;
-			x3 = ((x1 + x2) + 2) >> 2;
+                x1 = (_AC3 * b6) >> 13;
+                x2 = (_B1 * ((b6 * b6) >> 12)) >> 16;
+                x3 = ((x1 + x2) + 2) >> 2;
 
-			ulong b4 = (ulong)((_AC4 * (x3 + 32768)) >> 15);
-			ulong b7 = (ulong)((uP - b3) * (50000 >> (int)_OSR));
+                ulong b4 = (ulong)((_AC4 * (x3 + 32768)) >> 15);
+                ulong b7 = (ulong)((uP - b3) * (50000 >> (int)_OSR));
 
-			ulong pressure = 0;
-			if (b7 < 0x80000000)
-			{
-				pressure = (ulong)((b7 << 1) / b4);
-			}
-			else
-			{
-				pressure = (b7 / b4) << 1;
-			}
+                ulong pressure = 0;
+                if (b7 < 0x80000000)
+                {
+                    pressure = (ulong)((b7 << 1) / b4);
+                }
+                else
+                {
+                    pressure = (b7 / b4) << 1;
+                }
 
-			long v = -7357L;
+                long v = -7357L;
 
-			x1 = ((long)(pressure >> 8)) * ((long)(pressure >> 8));
-			x1 = (x1 * 3038) >> 16;
-			x2 = (v * (long)pressure) >> 16;
+                x1 = ((long)(pressure >> 8)) * ((long)(pressure >> 8));
+                x1 = (x1 * 3038) >> 16;
+                x2 = (v * (long)pressure) >> 16;
 
-
-
-			pressure = pressure + (ulong)((x1 + x2 + 3791) >> 4); //pressure is calculated in Pa (1hPa = 100Pa)
+                pressure = pressure + (ulong)((x1 + x2 + 3791) >> 4); //pressure is calculated in Pa (1hPa = 100Pa)
 
 
-			return pressure;
+                return pressure;
+            }
+            catch (Exception)
+            {
+                Debug.Print("BMP180 -- CalculateTruePressure Exception\n\r");
+                return 0;
+            }
+
+
 		}
+
+        /// <summary>
+        /// Calculates the altitude (in meters) from the specified atmospheric pressure (in hPa), and sea-level pressure (in hPa).
+        /// </summary>
+        /// <param name="seaLevel">Sea-level pressure in hPa</param>
+        /// <param name="atmospheric">Atmospheric pressure in hPa</param>
+        /// <returns></returns>
+        public float pressureToAltitude(float seaLevel, float atmospheric)
+        {
+            return (float)(44330.0 * (1.0 -System.Math.Pow(atmospheric / seaLevel, 0.1903)));
+        }
+
+        /// <summary>
+        /// Calculates the pressure at sea level (in hPa) from the specified altitude (in meters), and atmospheric pressure (in hPa).
+        /// </summary>
+        /// <param name="altitude">Altitude in meters</param>
+        /// <param name="atmospheric">Atmospheric pressure in hPa</param>
+        /// <returns></returns>
+        public float seaLevelForAltitude(float altitude, float atmospheric)
+        {
+            return (float)(atmospheric / System.Math.Pow(1.0 - (altitude / 44330.0), 5.255));
+        }
 	}
 }

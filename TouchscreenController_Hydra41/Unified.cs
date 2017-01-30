@@ -82,7 +82,7 @@ namespace Adafruit10DOFIMU
 			Gyroscope = new L3GD20();
 			Accelerometer = new LSM303HDLCA();
 			Magnetometer = new LSM303HDLCM();
-			Bmp180 = new BMP180(BMP180.OSR.Standard);
+			Bmp180 = new BMP180(BMP180.BMP085_MODE.Standard);
 			Gyroscope.GyroRangeOption = L3GD20.GyroRangeOptions.GYRO_RANGE_250DPS;
 		}
 
@@ -96,7 +96,7 @@ namespace Adafruit10DOFIMU
 
 			this.Pitch = (System.Math.Atan2(Accelerometer.Y, Accelerometer.Z) + System.Math.PI) * (180 / System.Math.PI);
 			this.Roll = (System.Math.Atan2(Accelerometer.X, Accelerometer.Z) + System.Math.PI) * (180 / System.Math.PI);
-			if (Bmp180.Read()) { }
+			if (Bmp180.Read()) { } 
 
 			_GyroReadingTimestamp = DateTime.Now;
 

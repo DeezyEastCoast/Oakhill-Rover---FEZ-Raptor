@@ -46,6 +46,24 @@ namespace Adafruit10DOFIMU
 			base.Write(ACCEL_CTRL_REG1, 0x57);
 		}
 
+        /// <summary>
+        /// Check that device is responsive.
+        /// </summary>
+        /// <returns></returns>
+        public override bool IsAlive()
+        {
+            // LSM303DLHC has no WHOAMI register so read CTRL_REG1_A back to check
+            // if we are connected or not
+
+            var reg1_a = Read(ACCEL_CTRL_REG1);
+            if (reg1_a != 0x57)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
 		public override bool Read()
 		{
 

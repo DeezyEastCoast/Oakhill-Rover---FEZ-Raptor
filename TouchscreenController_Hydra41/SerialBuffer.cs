@@ -25,8 +25,8 @@ namespace Oakhill_Rover
             {
                 // if not, look and see if we have enough free space at the front
                 if (buffer.Length - DataSize >= bytesToRead)
-                {
-                    ShiftBuffer();
+                { 
+                    ShiftBuffer(); 
                 }
                 else
                 {
@@ -40,6 +40,39 @@ namespace Oakhill_Rover
 
         }
 
+        public void LoadSerialOvr(SerialPort port)
+        {
+            int bytesToRead = port.BytesToRead;
+
+            if(bytesToRead >= buffer.Length)
+            {
+                port.Read(buffer, 0, buffer.Length);
+                startIndex = 0;
+                endIndex = buffer.Length;
+                //port.DiscardInBuffer();
+            }
+
+            //if (buffer.Length < endIndex + bytesToRead) // if we don't have enough space, flush hardware buffer and get last "buffer.Length" number of bytes
+            //{
+            //    endIndex = port.Read(buffer, 0, (bytesToRead % buffer.Length));
+            //    bytesToRead -= endIndex;
+
+            //    while (bytesToRead >= buffer.Length)
+            //    { 
+            //        port.Read(buffer, 0, buffer.Length);
+            //        bytesToRead -= buffer.Length;
+            //        endIndex = buffer.Length;
+            //    }
+                
+            //    startIndex = 0;
+            //}
+            //else
+            //{
+            //    port.Read(buffer, endIndex, bytesToRead);
+            //    endIndex += bytesToRead;
+            //}
+
+        }
 
         private void ShiftBuffer()
         {
@@ -66,6 +99,9 @@ namespace Oakhill_Rover
             }
         }
 
+        /// <summary>
+        /// The size of unprocessed data --- (data not yet used/returned by ReadLine())
+        /// </summary>
         public int DataSize
         {
             get
@@ -74,6 +110,10 @@ namespace Oakhill_Rover
             }
         }
 
+        /// <summary>
+        /// Read line from buffer
+        /// </summary>
+        /// <returns></returns>
         public string ReadLine()
         {
             lock (buffer)
@@ -102,5 +142,41 @@ namespace Oakhill_Rover
                 }
             }
         }
+
+        /// <summary>
+        /// Read line from buffer
+        /// </summary>
+        /// <returns></returns>
+        public string ReadLineOvr()
+        {
+            lock (buffer)
+            {
+                int lineStartPos = Array.IndexOf(buffer, '$', startIndex, DataSize);
+                int lineEndPos = Array.IndexOf(buffer, '\n', startIndex, DataSize);  // HACK: not looking for \r, just assuming that they'll come together 
+
+                if (lineStartPos < lineEndPos)
+                {
+                    int lineLength = lineEndPos - lineStartPos;
+
+                    int bytesUsed, charsUsed;
+                    bool completed;
+
+                    decoder.Convert(buffer, lineStartPos, lineLength, charBuffer, 0, lineLength, true, out bytesUsed, out charsUsed, out completed);
+                    
+                    string line = new string(charBuffer, 0, lineLength);
+                    
+                    startIndex = lineEndPos + 1;
+
+                    //Debug.Print("found string length " + lineLength + "; new buffer = " + startIndex + " to " + endIndex);
+                    return line;
+                }
+                else if (lineStartPos != -1)
+                    startIndex = lineStartPos;
+
+                return null;
+            }
+        }
+
+
     }
 }

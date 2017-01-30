@@ -87,7 +87,21 @@ namespace Adafruit10DOFIMU
 			base.Write(LSM303_REGISTER_MAG_CRB_REG_M, (byte)_Gain);
 		}
 
-
+        /// <summary>
+        /// Check that device is responsive.
+        /// </summary>
+        /// <returns></returns>
+        public override bool IsAlive()
+        {
+            // LSM303DLHC has no WHOAMI register so read CRA_REG_M to check
+            // the default value (0b00010000/0x10)
+            byte reg1_a = Read(LSM303_REGISTER_MAG_CRA_REG_M);
+            if (reg1_a != 0x10)
+            {
+                return false;
+            }
+            return true;
+        }
 
 		public override bool Read()
 		{

@@ -107,6 +107,21 @@ namespace Adafruit10DOFIMU
 
 		}
 
+        /// <summary>
+        /// Check that device is responsive.
+        /// </summary>
+        /// <returns></returns>
+        public override bool IsAlive()
+        {
+            if (Read(GYRO_REGISTER_WHOM_I) != _L3GD20_ID)
+            {
+                //Debug.Print("Gyro device not found.");
+                //throw new Exception("Device not found.");
+                return false;
+            }
+
+            return true;
+        }
 
 		public override bool Read()
 		{

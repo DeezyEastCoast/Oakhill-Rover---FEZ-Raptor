@@ -45,6 +45,7 @@
   <ItemGroup>
     <Compile Include="Alcam.cs" />
     <Compile Include="BMP180.cs" />
+    <Compile Include="BNO055.cs" />
     <Compile Include="EMIC2.cs" />
     <Compile Include="L3GD20.cs" />
     <Compile Include="LSM303HDLCA.cs" />

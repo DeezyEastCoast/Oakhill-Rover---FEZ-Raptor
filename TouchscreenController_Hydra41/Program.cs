@@ -42,13 +42,13 @@ namespace Oakhill_Rover
         static DRIVE_MODE DRIVE_MODE_ROVER = DRIVE_MODE.MANUAL;
 
         const int ROVER_TIMER_INTERVAL = 50;
-        static int MANUAL_MODE_TICK_INTERVAL = 10; // time interval in units of Manual mode to run this mode --> 10 * 50 mSec = 500 mSec interval
+        static int MANUAL_MODE_TICK_INTERVAL = 20; // time interval in units of Manual mode to run this mode --> 20 * 50 mSec = 500 mSec interval
         static int AUTO_MODE_TICK_INTERVAL = 20; // time interval in units of Manual mode to run this mode --> 20 * 50 mSec = 1000 mSec interval
-        //static int COMPASS_MODE_TICK_INTERVAL = 1; // time interval in units of Manual mode to run this mode --> 1 * 50 mSec = 50 mSec interval
+        static int COMPASS_MODE_TICK_INTERVAL = 20; // time interval in units of Manual mode to run this mode --> 20 * 50 mSec = 1000 mSec interval
 
         static GT.Timer ROVER_TIMER;
         static GT.Timer GroundEfxTimer; //Timer to run ground efx sho
-        
+
         static bool DEBUG_LED_STATE = true;
         static bool READCOMPLETE_IMU = false;
         static uint ROVER_LOOP_CNT = 0;
@@ -58,7 +58,11 @@ namespace Oakhill_Rover
         static int MA_RANGE_PERIOD = 5;
         static double[] MA_RANGE_ARRAY = new double[MA_RANGE_PERIOD];
         static int SONAR_DISTANCE = 0;
-        //static int eraseMe = 0;
+
+        static int SIGNAL_QUAL_INDEX = 0;
+        static int SIGNAL_QUAL_PERIOD = 20;
+        static double[] SIGNAL_QUALITY_ARRAY = new double[SIGNAL_QUAL_PERIOD];
+        static double SIGNAL_QUALITY = 0;
 
         static int picCounter = 0;
         //static bool roverHeadLights = false;
@@ -75,12 +79,17 @@ namespace Oakhill_Rover
         //static EMIC2 roverVoice;
         static MTK3339 roverGPS;
 
+        //static DateTime start_time;
+        //static DateTime end_time;
+        //static TimeSpan ts;
+
         #region AUTONOMOUS NAVIGATION
+
         //Compass Navigation
         static int TARGET_HEADING;  // where we want to go to reach current waypoint
         static int CURRENT_HEADING; // where we are actually facing now
         static int HEADING_ERROR;  // signed (+/-) difference between targetHeading and currentHeading
-        static readonly int HEADING_TOLERANCE = 5;  // tolerance +/- (in degrees) within which we don't attempt to turn to intercept targetHeading
+        static readonly int HEADING_TOLERANCE = 7;  // tolerance +/- (in degrees) within which we don't attempt to turn to intercept targetHeading
 
         //GPS Navigation
         static WAYPOINT homeWaypoint;
@@ -104,7 +113,7 @@ namespace Oakhill_Rover
             public int sec;
         }
 
-        struct GPSDATE 
+        struct GPSDATE
         {
             public int month;
             public int day;
@@ -177,12 +186,12 @@ namespace Oakhill_Rover
         static GPSDATE curGPSDATE = new GPSDATE(0, 0, 0);
 
         //Steering/Turning
-        enum TURN { LEFT = 200, RIGHT = 56, STRAIGHT= 128 };
+        enum TURN { LEFT = 200, RIGHT = 56, STRAIGHT = 128 };
         static TURN turnDirection = TURN.STRAIGHT;
 
         //Object avoidance distances (inches)
-        static byte SAFE_DISTANCE = 70;
-        static byte TURN_DISTANCE = 40;
+        static byte SAFE_DISTANCE = 60;
+        static byte TURN_DISTANCE = 36;
         static byte STOP_DISTANCE = 12;
 
         //Speeds 
@@ -221,7 +230,17 @@ namespace Oakhill_Rover
 
         #region Adafruit 10DOF
 
-        static Unified IMU_Adafruit = Unified.Instance;
+        //static Unified IMU_Adafruit = Unified.Instance;
+
+        //bool IMU_PRESS_ALIVE = IMU_Adafruit.Bmp180.IsAlive();
+        //bool IMU_MAG_ALIVE = IMU_Adafruit.Magnetometer.IsAlive();
+        //bool IMU_ACCEL_ALIVE = IMU_Adafruit.Accelerometer.IsAlive();
+        //bool IMU_GYRO_ALIVE = IMU_Adafruit.Gyroscope.IsAlive();
+
+        static BNO055 IMU_BNO = new BNO055();
+
+        byte[] sysStatus = new byte[] { 0, 0, 0 };
+        static BNO055.Vector ATTITUDE_VECTOR;
 
         #endregion
 
@@ -263,7 +282,7 @@ namespace Oakhill_Rover
 
         //static string linkSpriteCamComPortName;
         //static SerialPort linkSpriteCamComPort;
-           
+
         #endregion
 
         #region ECO2 VIDEO CAMERA
@@ -297,6 +316,8 @@ namespace Oakhill_Rover
             // Use Debug.Print to show messages in Visual Studio's "Output" window during debugging.
             Debug.Print("Program Started");
 
+            #region GENERAL SETUP
+
             targetWaypointList[0].dMapLatitude = 41.9378456849981376;
             targetWaypointList[0].dMapLongitude = -71.2962967157363892;
             targetWaypointList[1].dMapLatitude = 41.9380132828811867;
@@ -305,8 +326,6 @@ namespace Oakhill_Rover
             targetWaypointList[2].dMapLongitude = -71.295427680015564;
             targetWaypointList[3].dMapLatitude = 41.9374466406466198;
             targetWaypointList[3].dMapLongitude = -71.2960553169250488;
-
-            #region GENERAL SETUP
 
             //pin 3 port 13 is ultrasonic distance sensor Vcc/512 per inch --> 6.4mV per inch
             //pin 6 port 13 is ultrasonic distance sensor RX pin, High = enabled, Low = Disabled
@@ -350,13 +369,14 @@ namespace Oakhill_Rover
             lairdCtsPin = GT.Socket.GetSocket(11, true, null, null).CpuPins[6];
             //lairdRtsPin = GT.Socket.GetSocket(11, true, null, null).CpuPins[7];
             lairdResetPin = GT.Socket.GetSocket(11, true, null, null).CpuPins[3];
-            lairdComPort.Open();
 
             lairdReset = new Microsoft.SPOT.Hardware.OutputPort(lairdResetPin, true);
             lairdCts = new Microsoft.SPOT.Hardware.OutputPort(lairdCtsPin, false);
             //lairdRts = new Microsoft.SPOT.Hardware.InputPort(lairdRtsPin, false, Microsoft.SPOT.Hardware.Port.ResistorMode.PullUp);
 
             lairdWirelessBuffer = new SerialBuffer(72);
+
+            lairdComPort.Open();
 
             #endregion
 
@@ -369,23 +389,74 @@ namespace Oakhill_Rover
             #endregion
 
             #region Adafruit10DOF Setup
-            //IMU_Adafruit.ReadCompleted += (t) =>
+
+            //if (IMU_GYRO_ALIVE && IMU_MAG_ALIVE && IMU_PRESS_ALIVE && IMU_ACCEL_ALIVE)
+            //{
+            //    //IMU_Adafruit.ReadCompleted += (t) =>
+            //    //{
+            //    //    IMU_Adafruit.ContinuousRead = false;
+            //    //    READCOMPLETE_IMU = true;
+            //    //};
+
+            //    IMU_Adafruit.ReadCompleted += (t) =>
+            //        {
+            //            //Debug.Print("Current Temperature: " + IMU_Adafruit.Bmp180.Temperature + " \u00B0C");
+            //            Debug.Print("Current Temperature: " + ((IMU_Adafruit.Bmp180.Temperature * 1.8000) + 32) + " \u00B0F");
+            //            Debug.Print("Accelerometer X: " + IMU_Adafruit.Accelerometer.X + " Y: " + IMU_Adafruit.Accelerometer.Y + " Z: " + IMU_Adafruit.Accelerometer.Z);
+            //            Debug.Print("Magnetometer X: " + IMU_Adafruit.Magnetometer.X + " Y: " + IMU_Adafruit.Magnetometer.Y + " Z: " + IMU_Adafruit.Magnetometer.Z);
+            //            Debug.Print("Gyroscope X: " + IMU_Adafruit.Gyroscope.X + " Y: " + IMU_Adafruit.Gyroscope.Y + " Z: " + IMU_Adafruit.Gyroscope.Z);
+            //            Debug.Print("Heading: " + IMU_Adafruit.Heading);
+            //        };
+
+            //    IMU_Adafruit.ContinuousRead = true;
+            //    IMU_Adafruit.BeginAsync();
+            //}
+            //else
+            //{
+            //    while (true)
             //    {
-            //        //Debug.Print("Current Temperature: " + IMU_Adafruit.Bmp180.Temperature + " \u00B0C");
-            //        Debug.Print("Current Temperature: " + ((IMU_Adafruit.Bmp180.Temperature * 1.8000) + 32) + " \u00B0F");
-            //        Debug.Print("Accelerometer X: " + IMU_Adafruit.Accelerometer.X + " Y: " + IMU_Adafruit.Accelerometer.Y + " Z: " + IMU_Adafruit.Accelerometer.Z);
-            //        Debug.Print("Magnetometer X: " + IMU_Adafruit.Magnetometer.X + " Y: " + IMU_Adafruit.Magnetometer.Y + " Z: " + IMU_Adafruit.Magnetometer.Z);
-            //        Debug.Print("Gyroscope X: " + IMU_Adafruit.Gyroscope.X + " Y: " + IMU_Adafruit.Gyroscope.Y + " Z: " + IMU_Adafruit.Gyroscope.Z);
-            //        Debug.Print("Heading: " + IMU_Adafruit.Heading);
-            //    };
-            IMU_Adafruit.ReadCompleted += (t) =>
-                {
-                    IMU_Adafruit.ContinuousRead = false;
-                    READCOMPLETE_IMU = true;
-                    
-                };
-            IMU_Adafruit.ContinuousRead = true;
-            IMU_Adafruit.BeginAsync();
+            //        if (!IMU_Adafruit.Accelerometer.IsAlive()) Debug.Print("ACCEL not working.\r\n");
+            //        else Debug.Print("ACCEL OK.\r\n");
+            //        if (!IMU_Adafruit.Gyroscope.IsAlive()) Debug.Print("GYRO not working.\r\n");
+            //        else Debug.Print("GYRO OK.\r\n");
+            //        if (!IMU_Adafruit.Magnetometer.IsAlive()) Debug.Print("MAG not working.\r\n");
+            //        Debug.Print("MAG OK.\r\n");
+            //        if (!IMU_Adafruit.Bmp180.IsAlive()) Debug.Print("PRESSURE not working.\r\n");
+            //        Debug.Print("PRESS OK.\r\n");
+
+            //        Mainboard.SetDebugLED(true);
+            //        Thread.Sleep(1000);
+            //        Mainboard.SetDebugLED(false);
+            //        Thread.Sleep(1000);
+
+            //    }
+            //}
+
+            bool IMU_PRESS_ALIVE = IMU_BNO.IsAlive();
+
+            //IMU_BNO.getSystemStatus(ref sysStatus[0], ref sysStatus[1], ref sysStatus[2]);
+            //Debug.Print("SystemStatus: " + sysStatus[0].ToString() + " -- " + sysStatus[1].ToString() + " -- " + sysStatus[2].ToString() + "\n\r");
+            //Thread.Sleep(2000);
+
+            //while (!IMU_BNO.isFullyCalibrated())
+            //{
+            //    IMU_BNO.getSystemStatus(ref sysStatus[0], ref sysStatus[1], ref sysStatus[2]);
+            //    Debug.Print("SystemStatus: " + sysStatus[0].ToString() + " -- " + sysStatus[1].ToString() + " -- " + sysStatus[2].ToString());
+
+            //    Thread.Sleep(500);
+
+            //    ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
+            //    Debug.Print("Euler: X:" + ATTITUDE_VECTOR.x + " Y:" + ATTITUDE_VECTOR.y + " Z:" + ATTITUDE_VECTOR.z);
+
+            //    Thread.Sleep(500);
+
+            //    Debug.Print("SYS Cal: " + IMU_BNO.Calibration_SYS);
+            //    Debug.Print("Mag Cal: " + IMU_BNO.Calibration_MAG);
+            //    Debug.Print("Accel Cal: " + IMU_BNO.Calibration_ACCEL);
+            //    Debug.Print("Gyro Cal: " + IMU_BNO.Calibration_GYRO);
+
+            //    Thread.Sleep(500);
+            //}
 
             #endregion
 
@@ -423,7 +494,7 @@ namespace Oakhill_Rover
             //catch
             //{
             //    Debug.Print("ALCAM camera not connected.\n");
- 
+
             //}
 
             //Debug.Print("Change size:\n" + alcam.ChangeSize());
@@ -496,9 +567,10 @@ namespace Oakhill_Rover
             muxComPort = new OHS_UartMux(4);
             Power_Uart_Mux.OHS_UartMux.myActiveComPort = 0;
             roverGPS = new MTK3339(Gadgeteer.Socket.GetSocket(4, true, null, null).SerialPortName, MTK3339.SubscriptionLevels.RMCGGA, MTK3339.UpdateRates.GPS_1HZ);
+            //roverGPS = new MTK3339(Gadgeteer.Socket.GetSocket(4, true, null, null).SerialPortName, MTK3339.SubscriptionLevels.RMCGGA, MTK3339.UpdateRates.GPS_1HZ,true);
             roverGPS.TimeChanged += gpsTimeChange;
             roverGPS.DateChanged += gpsDateChange;
-            //GPS.CoordinatesUpdated += GPS_CoordinatesUpdated;
+            //roverGPS.CoordinatesUpdated += GPS_CoordinatesUpdated;
 
             //void GPS_CoordinatesUpdated(MTK3339 sender)
             //{
@@ -519,27 +591,9 @@ namespace Oakhill_Rover
 
             #endregion
 
-            //DRIVE_MODE_ROVER = DRIVE_MODE.AUTO;
-            //while (true)
-            //{
-            //    motorSpeed(FAST_SPEED);
-            //    Thread.Sleep(3000);
-
-            //    motorSpeed(SLOW_SPEED);
-            //    Thread.Sleep(3000);
-
-            //    motorSpeed(REVERSE_SPEED);
-            //    Thread.Sleep(3000);
-
-            //    motorSpeed(SLOW_SPEED);
-            //    Thread.Sleep(3000);
-
-            //    motorSpeed(NORMAL_SPEED);
-            //    Thread.Sleep(3000);
-
-            //}
             //display_T35.SimpleGraphics.DisplayImage(SD_ROOT_DIRECTORY + @"\roverPic17.jpg", Bitmap.BitmapImageType.Jpeg, 0, 0);
         }
+
 
         /// <summary>
         /// Switches between rover operational modes.
@@ -548,7 +602,7 @@ namespace Oakhill_Rover
         {
             int i = 0;
             switch (newMode)
-            { 
+            {
                 case DRIVE_MODE.MANUAL:
 
                     DRIVE_MODE_ROVER = newMode;
@@ -580,7 +634,7 @@ namespace Oakhill_Rover
                     Power_Uart_Mux.OHS_UartMux.myActiveComPort = 3;
 
                     break;
-                
+
                 case DRIVE_MODE.ASSIST:
                     break;
 
@@ -601,7 +655,7 @@ namespace Oakhill_Rover
             {
                 Power_Uart_Mux.OHS_UartMux.myActiveComPort = 0;
             }
- 
+
         }
 
         /// <summary>
@@ -631,6 +685,7 @@ namespace Oakhill_Rover
             curGPSDATE.day = d;
             curGPSDATE.year = y;
         }
+
         #region TIMERS
 
         /// <summary>
@@ -641,15 +696,24 @@ namespace Oakhill_Rover
             //start_time = DateTime.Now;
             MOTORTIMEOUT_CNT++;
             ROVER_LOOP_CNT++;
+            SIGNAL_QUALITY_ARRAY[SIGNAL_QUAL_INDEX] = 0;
+            //end_time = DateTime.Now;
 
             lairdWirelessBuffer.LoadSerial(lairdComPort);
             if ((ps2DataLine = lairdWirelessBuffer.ReadLine()) != null)
             {
                 try
                 {
-                     //verify checksum
+                    //verify checksum
                     if ((byte)(Convert.ToInt32(ps2DataLine.Substring(ps2DataLine.LastIndexOf("*") + 1, 2), 16)) == getChecksum(Encoding.UTF8.GetBytes(ps2DataLine)))
                     {
+                        SIGNAL_QUALITY_ARRAY[SIGNAL_QUAL_INDEX] = 1.0 / SIGNAL_QUAL_PERIOD;
+
+                        //ts = end_time - start_time;
+                        //Debug.Print("Total time: " + ts.ToString());
+                        //Debug.Print("Total time in seconds: " + ((float)ts.Ticks / TimeSpan.TicksPerSecond).ToString() + " seconds");
+                        //start_time = DateTime.Now;
+
                         switch (ps2DataLine.Substring(0, 4))
                         {
                             case "$OJC": //Oakhill Joysick Control
@@ -710,7 +774,7 @@ namespace Oakhill_Rover
                                 break;
 
                             //case "$EFC": //Eco Fly Cam
-                                
+
                             //    //ecoFlyCam((byte)Convert.ToInt32(ps2DataLine.Substring(5, 2), 16));
 
                             //    //'$','E','F','C',','  
@@ -741,13 +805,13 @@ namespace Oakhill_Rover
 
                 }
                 catch (Exception)
-                { }
+                { Debug.Print("******RoverTimer_Tick Cmd Exception********\n\r"); }
             }
 
             switch (DRIVE_MODE_ROVER)
             {
                 case DRIVE_MODE.MANUAL:
-                    
+
                     //send rover state 
                     ManualMode_Tick(ROVER_LOOP_CNT);
 
@@ -774,10 +838,19 @@ namespace Oakhill_Rover
                     CompassMode_Tick(ROVER_LOOP_CNT);
 
                     break;
-            } 
+            }
+
+            SIGNAL_QUALITY = 0;
+
+            for (int i = 0; i < SIGNAL_QUAL_PERIOD; i++)
+                SIGNAL_QUALITY += SIGNAL_QUALITY_ARRAY[i];
+
+            SIGNAL_QUAL_INDEX = (SIGNAL_QUAL_INDEX + 1) % SIGNAL_QUAL_PERIOD;
+            //Debug.Print("Signal Qual:" + SIGNAL_QUALITY);
+
             //end_time = DateTime.Now;
             //ts = end_time - start_time;
-            //Debug.Print("Total time: " + ts.ToString());
+            ////Debug.Print("Total time: " + ts.ToString());
             //Debug.Print("Total time in seconds: " + ((float)ts.Ticks / TimeSpan.TicksPerSecond).ToString() + " seconds");
         }
 
@@ -791,9 +864,15 @@ namespace Oakhill_Rover
 
             if (LOOP_TICK % AUTO_MODE_TICK_INTERVAL == 0)
             {
+                //update gps
+                //roverGPS._gpsSP_DataPoll();
+
                 //get current GPS position --------- PUT A VALID LOCK/FIX CHECK ON GPS
                 currentWaypoint.dMapLatitude = roverGPS.MapLatitude;
                 currentWaypoint.dMapLongitude = roverGPS.MapLongitude;
+
+                ////////////currentWaypoint.dMapLatitude = 41.937618230023773; //test GPS points
+                ////////////currentWaypoint.dMapLongitude = -71.295427680015564; //test GPS points
 
                 targetWaypoint.dMapLatitude = targetWaypointList[targetWaypointNum].dMapLatitude;
                 targetWaypoint.dMapLongitude = targetWaypointList[targetWaypointNum].dMapLongitude;
@@ -803,28 +882,22 @@ namespace Oakhill_Rover
                 courseToWaypoint();
 
                 //get current compass heading
-                if (READCOMPLETE_IMU)
-                {
-                    CURRENT_HEADING = (int)IMU_Adafruit.Heading;
-                    calcDesiredTurn();
+                ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
+                CURRENT_HEADING = (int)ATTITUDE_VECTOR.x;
 
-                    READCOMPLETE_IMU = false;
+                calcDesiredTurn();
 
-                    IMU_Adafruit.ContinuousRead = true;
-                    IMU_Adafruit.BeginAsync();
-
-                    if (roverGPS.FixAvailable)
-                        moveAndAvoid();
-                }
+                if (roverGPS.FixAvailable)
+                    moveAndAvoid();
 
                 //output oakhill rover autonomous
-                roverData = "$ORA," +
-                            SONAR_DISTANCE + " in"
-                            + "," + IMU_Adafruit.Heading + " deg"
+                roverData = "$ORA,"
+                                  + SONAR_DISTANCE
+                            + "," + CURRENT_HEADING
                             + "," + currentWaypoint.dMapLatitude
                             + "," + currentWaypoint.dMapLongitude
-                            + "," + distanceToTarget + " m"
-                            + "," + TARGET_HEADING + " deg"
+                            + "," + distanceToTarget
+                            + "," + TARGET_HEADING
                             + "," + targetWaypointNum
                             + "," + (byte)turnDirection
                             + "," + (byte)CURRENT_NAV_SPEED
@@ -838,11 +911,11 @@ namespace Oakhill_Rover
                 //log auto data
                 WriteFileLines("roverLog.txt", new string[] {curGPSDATE.month.ToString() + "/" + curGPSDATE.day.ToString() + "/" + curGPSDATE.year.ToString() + "," +
                                                              curGPSTIME.hour.ToString() + ":" + curGPSTIME.min.ToString() + ":" + curGPSTIME.sec.ToString() + "," + 
-                                                             roverData.TrimEnd(new char[] { '\n', '\r' }) + "," + roverGPS.SatellitesUsed.ToString() });
+                                                              roverGPS.SatellitesUsed.ToString() + "," + roverData.TrimEnd(new char[] { '\n', '\r' })  });
 
                 curGPSTIME.hour = 0; curGPSTIME.min = 0; curGPSTIME.sec = 0;
                 //Debug.Print(roverData);
-                
+
                 lairdComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
             }
 
@@ -855,21 +928,20 @@ namespace Oakhill_Rover
         {
             if (LOOP_TICK % MANUAL_MODE_TICK_INTERVAL == 0)
             {
-                double _temperature = 0.001f;
-                float _pressure = 0.001f;
+                int _temperature = 0;
+                int _pressure = 0;
                 CURRENT_HEADING = 0;
 
-                if (READCOMPLETE_IMU)
-                {
-                   CURRENT_HEADING = (int)IMU_Adafruit.Heading;
-                   _temperature = (IMU_Adafruit.Bmp180.Temperature * 1.8000) + 32;
-                   _pressure =  IMU_Adafruit.Bmp180.Pressure / 6895;
-                    
-                    READCOMPLETE_IMU = false;
+                //update gps
+                //roverGPS._gpsSP_DataPoll();
 
-                    IMU_Adafruit.ContinuousRead = true;
-                    IMU_Adafruit.BeginAsync();
-                }
+                //if (READCOMPLETE_IMU)
+                //{
+                ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
+                CURRENT_HEADING = (int)ATTITUDE_VECTOR.x;
+
+                _temperature = (int)(IMU_BNO.getTemperature() * 1.8000) + 32;
+                //}
 
                 if (roverGPS.FixAvailable)
                 {
@@ -882,27 +954,34 @@ namespace Oakhill_Rover
                     currentWaypoint.dMapLongitude = 0.0;
                 }
 
-                //output oakhill rover data
-                roverData = "$ORD," +
-                                    getBatteryVoltage() + " V"
-                            + "," + getBatteryCurrent() + " A"
-                            + "," + getSonarRangeAvg() + " in"
-                            + "," + CURRENT_HEADING + " deg"
-                            + "," + _temperature.ToString().Substring(0, 4) + " F"
-                            + "," + _pressure.ToString().Substring(0, 4) + " psi"
-                            + "," + currentWaypoint.dMapLatitude
-                            + "," + currentWaypoint.dMapLongitude
-                            + "," + roverGPS.FixAvailable
-                            + "," + ((byte)DRIVE_MODE_ROVER).ToString()
+                try
+                {
+                    //output oakhill rover data
+                    roverData = "$ORD,"
+                                      + getBatteryVoltage()
+                                + "," + getBatteryCurrent()
+                                + "," + getSonarRangeAvg()
+                                + "," + CURRENT_HEADING
+                                + "," + _temperature
+                                + "," + _pressure
+                                + "," + currentWaypoint.dMapLatitude
+                                + "," + currentWaypoint.dMapLongitude
+                                + "," + roverGPS.FixAvailable
+                                + "," + ((byte)DRIVE_MODE_ROVER).ToString()
 
-                            //+ "," + (1.0 - ((IMU_Adafruit.Bmp180.Pressure/101910)^.19)) //convert pressure to altitude in meters, 1019.1hPa as sealevel in Pawtucket
-                            + "*";
+                                //+ "," + (1.0 - ((IMU_Adafruit.Bmp180.Pressure/101910)^.19)) //convert pressure to altitude in meters, 1019.1hPa as sealevel in Pawtucket
+                                + "*";
 
-                roverData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(roverData)))) + "\r\n"); //add checksum, cr and lf
+                    roverData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(roverData)))) + "\r\n"); //add checksum, cr and lf
 
-                //WriteFileLines("roverLog.txt", new string[] { roverData });
-                //Debug.Print(roverData);
-                lairdComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
+                    //WriteFileLines("roverLog.txt", new string[] { roverData });
+                    //Debug.Print(roverData);
+                    lairdComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
+                }
+                catch (Exception)
+                {
+                    Debug.Print("******ManualMode_Tick Exception******\n\r");
+                }
             }
         }
 
@@ -911,42 +990,103 @@ namespace Oakhill_Rover
         /// </summary>
         static void CompassMode_Tick(uint LOOP_TICK)
         {
-            if (READCOMPLETE_IMU)
+            if (LOOP_TICK % COMPASS_MODE_TICK_INTERVAL == 0)
             {
+                byte[] sysStatus = new byte[3];
+
+                IMU_BNO.getSystemStatus(ref sysStatus[0], ref sysStatus[1], ref sysStatus[2]);
+                ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
+
+                roverData = "$OCC,"
+                          + IMU_BNO.isFullyCalibrated()
+                    + "," + sysStatus[0]
+                    + "," + sysStatus[1]
+                    + "," + sysStatus[2]
+                    + "," + IMU_BNO.Calibration_SYS
+                    + "," + IMU_BNO.Calibration_MAG
+                    + "," + IMU_BNO.Calibration_ACCEL
+                    + "," + IMU_BNO.Calibration_GYRO
+                    + "," + (int)ATTITUDE_VECTOR.x
+                    + "," + (int)ATTITUDE_VECTOR.y
+                    + "," + (int)ATTITUDE_VECTOR.z
+                    + "*";
+
+                //BNO055.Vector attitude_VEC;
+                //BNO055.Vector attitude_MAG;
+                //BNO055.Vector attitude_ACC;
+                //BNO055.Vector attitude_GYRO;
+
+                //attitude_VEC = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
+                //attitude_MAG = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_MAGNETOMETER);
+                //attitude_ACC = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_ACCELEROMETER);
+                //attitude_GYRO = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_GYROSCOPE);
+
                 //output compass/IMU data
-                roverData = "Raw:"
-                                  + IMU_Adafruit.Gyroscope.RawX
-                            + "," + IMU_Adafruit.Accelerometer.RawY
-                            + "," + IMU_Adafruit.Accelerometer.RawZ
-                            
-                            + "," + IMU_Adafruit.Gyroscope.RawX
-                            + "," + IMU_Adafruit.Gyroscope.RawY
-                            + "," + IMU_Adafruit.Gyroscope.RawZ
+                //roverData = "Raw:"
+                //             + attitude_VEC.x
+                //       + "," + attitude_VEC.y
+                //       + "," + attitude_VEC.z
+                //       + "," + attitude_MAG.x
+                //       + "," + attitude_MAG.y
+                //       + "," + attitude_MAG.z
+                //       + "," + attitude_ACC.x
+                //       + "," + attitude_ACC.y
+                //       + "," + attitude_ACC.z
+                //       + "," + attitude_GYRO.x
+                //       + "," + attitude_GYRO.y
+                //       + "," + attitude_GYRO.z
+                //       + "," + IMU_BNO.Calibration_SYS
+                //       + "," + IMU_BNO.Calibration_MAG
+                //       + "," + IMU_BNO.Calibration_ACCEL
+                //       + "," + IMU_BNO.Calibration_GYRO;
 
-                             + "," + IMU_Adafruit.Magnetometer.RawX
-                            + "," + IMU_Adafruit.Magnetometer.RawY
-                            + "," + IMU_Adafruit.Magnetometer.RawZ;
+                //while (!IMU_BNO.isFullyCalibrated())
+                //{
+                //    IMU_BNO.getSystemStatus(ref sysStatus[0], ref sysStatus[1], ref sysStatus[2]);
+                //    Debug.Print("SystemStatus: " + sysStatus[0].ToString() + " -- " + sysStatus[1].ToString() + " -- " + sysStatus[2].ToString());
 
+                //    Thread.Sleep(500);
 
-                roverData +=  "\r\n"; //add  cr and lf
-                //roverData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(roverData)))) + "\r\n"); //add checksum, cr and lf
-                READCOMPLETE_IMU = false;
+                //    ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
+                //    Debug.Print("Euler: X:" + ATTITUDE_VECTOR.x + " Y:" + ATTITUDE_VECTOR.y + " Z:" + ATTITUDE_VECTOR.z);
 
-                //Debug.Print(roverData);
-                //lairdComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
-                try
-                {
-                      OHS_UartMux.MuxComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
-                }
-                catch
-                {
-                    Debug.Print("Compass Out Error.");
-                }
+                //    Thread.Sleep(500);
 
-                IMU_Adafruit.ContinuousRead = true;
-                IMU_Adafruit.BeginAsync();
+                //    Debug.Print("SYS Cal: " + IMU_BNO.Calibration_SYS);
+                //    Debug.Print("Mag Cal: " + IMU_BNO.Calibration_MAG);
+                //    Debug.Print("Accel Cal: " + IMU_BNO.Calibration_ACCEL);
+                //    Debug.Print("Gyro Cal: " + IMU_BNO.Calibration_GYRO);
+
+                //    Thread.Sleep(500);
+                //}
+
+                //      + IMU_BNO.Gyroscope.RawX
+                //+ "," + IMU_Adafruit.Accelerometer.RawY
+                //+ "," + IMU_Adafruit.Accelerometer.RawZ
+
+                //+ "," + IMU_Adafruit.Gyroscope.RawX
+                //+ "," + IMU_Adafruit.Gyroscope.RawY
+                //+ "," + IMU_Adafruit.Gyroscope.RawZ
+
+                // + "," + IMU_Adafruit.Magnetometer.RawX
+                //+ "," + IMU_Adafruit.Magnetometer.RawY
+                //+ "," + IMU_Adafruit.Magnetometer.RawZ;
+
+                //roverData += "\r\n"; //add  cr and lf
+                roverData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(roverData)))) + "\r\n"); //add checksum, cr and lf
+
+                Debug.Print(roverData);
+                lairdComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
+                
+                //try
+                //{
+                //    OHS_UartMux.MuxComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
+                //}
+                //catch
+                //{
+                //    Debug.Print("Compass Out Error.");
+                //}
             }
-
         }
 
         #endregion
@@ -1040,7 +1180,7 @@ namespace Oakhill_Rover
         //        Debug.Print(success);
         //        return true;
         //    }
-            
+
         //    Debug.Print(fail);
         //    return false;
         //}
@@ -1080,12 +1220,12 @@ namespace Oakhill_Rover
             //else if (speedCmd >= 90) speedCmd = (byte)convertLinearScale(speedCmd, 90, 255, 136, 255);
             //else speedCmd = (byte)convertLinearScale(speedCmd, 0, 70, 0, 134);
 
-            if (DRIVE_MODE_ROVER == DRIVE_MODE.AUTO)   
+            if (DRIVE_MODE_ROVER == DRIVE_MODE.AUTO)
             {
                 byte tempSpeed = STOP_SPEED;
                 NEW_NAV_SPEED = speedCmd;
-                
-                if(NEW_NAV_SPEED == REVERSE_SPEED)
+
+                if (NEW_NAV_SPEED == REVERSE_SPEED)
                 {
                     motor_steering_ComPort.Write(new byte[] { 0xFF, 0x02, STOP_SPEED }, 0, 3);
 
@@ -1111,7 +1251,7 @@ namespace Oakhill_Rover
                         motor_steering_ComPort.Write(new byte[] { 0xFF, 0x02, (byte)(tempSpeed = (byte)(tempSpeed * .9)) }, 0, 3);
                     }
                 }
-                else if (NEW_NAV_SPEED > CURRENT_NAV_SPEED) //increase speed
+                else if (NEW_NAV_SPEED >= CURRENT_NAV_SPEED) //increase or maintain speed
                 {
                     tempSpeed = CURRENT_NAV_SPEED;
                     motor_steering_ComPort.Write(new byte[] { 0xFF, 0x02, CURRENT_NAV_SPEED }, 0, 3);
@@ -1130,11 +1270,10 @@ namespace Oakhill_Rover
                     while (tempSpeed > NEW_NAV_SPEED)
                     {
                         Thread.Sleep(50);
-                        motor_steering_ComPort.Write(new byte[] { 0xFF, 0x02, tempSpeed -=5 }, 0, 3);
+                        motor_steering_ComPort.Write(new byte[] { 0xFF, 0x02, tempSpeed -= 5 }, 0, 3);
                     }
                 }
 
-                
                 CURRENT_NAV_SPEED = NEW_NAV_SPEED;
 
                 return;
@@ -1530,7 +1669,7 @@ namespace Oakhill_Rover
 
             //Debug.Print("Bat Voltage: " + tempBattery.ToString() + "V");
 
-            return tempBattery.ToString(); 
+            return tempBattery.ToString();
         }
 
         /// <summary>
@@ -1549,7 +1688,7 @@ namespace Oakhill_Rover
 
             //Debug.Print("Bat Current: " + tempBattery.ToString() + "A");
 
-            return tempBattery.ToString(); 
+            return tempBattery.ToString();
         }
 
         /// <summary>
@@ -1584,13 +1723,13 @@ namespace Oakhill_Rover
             for (int i = 0; i < MA_RANGE_PERIOD; i++)
                 MA_RANGE += MA_RANGE_ARRAY[i];
 
-            MA_RANGE_INDEX = (MA_RANGE_INDEX+1) % MA_RANGE_PERIOD;
+            MA_RANGE_INDEX = (MA_RANGE_INDEX + 1) % MA_RANGE_PERIOD;
 
             //Debug.Print("MA Range: " + MA_RANGE.ToString() + " inches\n\r");
 
             return (int)MA_RANGE;
         }
-        
+
         #region NAVIGATION METHODS
 
         /// <summary>
@@ -1627,7 +1766,7 @@ namespace Oakhill_Rover
         /// <returns>Distance in meters between two GPS positions</returns>
         static int distanceToWaypoint()
         {
-            double delta = ((System.Math.PI/180)*(currentWaypoint.dMapLongitude - targetWaypoint.dMapLongitude)); //convert the angular difference to radians
+            double delta = ((System.Math.PI / 180) * (currentWaypoint.dMapLongitude - targetWaypoint.dMapLongitude)); //convert the angular difference to radians
             double sdlong = System.Math.Sin(delta);
             double cdlong = System.Math.Cos(delta);
             double lat1 = (System.Math.PI / 180) * (currentWaypoint.dMapLatitude); //convert to radians
@@ -1696,11 +1835,11 @@ namespace Oakhill_Rover
             a2 = System.Math.Atan2(a1, a2);
             if (a2 < 0.0)
             {
-                a2 += (2*System.Math.PI);
+                a2 += (2 * System.Math.PI);
             }
-            TARGET_HEADING = (int)((a2*180)/System.Math.PI);
+            TARGET_HEADING = (int)((a2 * 180) / System.Math.PI);
             return TARGET_HEADING;
-        }   
+        }
 
         /// <summary>
         /// Drive and avoid obstacles if necessary.
@@ -1724,10 +1863,9 @@ namespace Oakhill_Rover
                 if (turnDirection == TURN.STRAIGHT)
                     motorSpeed(NORMAL_SPEED);
                 else
-                {
                     motorSpeed(TURN_SPEED);
-                    servoAngle((byte)turnDirection);     // alraedy turning to navigate
-                }
+
+                servoAngle((byte)turnDirection);     //turn to navigate
 
                 return;
             }
@@ -1778,29 +1916,24 @@ namespace Oakhill_Rover
 
                     // Process GPS -- update the course and distance to waypoint based on our new position
                     distanceToWaypoint();
-                    courseToWaypoint(); 
+                    courseToWaypoint();
 
                     //get current compass heading
-                    if (READCOMPLETE_IMU)
-                    {
-                        CURRENT_HEADING = (int)IMU_Adafruit.Heading;
-                        calcDesiredTurn();  // calculate how we would optimatally turn, without regard to obstacles   
+                    ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
 
-                        READCOMPLETE_IMU = false;
+                    CURRENT_HEADING = (int)ATTITUDE_VECTOR.x;
+                    calcDesiredTurn();  // calculate how we would optimatally turn, without regard to obstacles   
 
-                        IMU_Adafruit.ContinuousRead = true;
-                        IMU_Adafruit.BeginAsync();
-                    }
-                
                     //check sonar distance
                     SONAR_DISTANCE = getSonarRangeAvg();
-                    //updateDisplay();
-                    Thread.Sleep(100);
+                    Debug.Print("$REVERSE: " + SONAR_DISTANCE);//updateDisplay(); 
+                    Thread.Sleep(500);
                 } // while (sonarDistance < TURN_DISTANCE)
+
                 motorSpeed(STOP_SPEED);         // stop backing up
+                
                 return;
             } // end of IF TOO CLOSE
-
         }
 
         #endregion
@@ -1924,7 +2057,7 @@ namespace Oakhill_Rover
                 //    File.OpenWrite(SD_ROOT_DIRECTORY + @"\" + fileName);
 
                 Debug.Print("Writing file..." + fileName);
-                FileHandle = new StreamWriter(SD_ROOT_DIRECTORY + @"\" + fileName , true);
+                FileHandle = new StreamWriter(SD_ROOT_DIRECTORY + @"\" + fileName, true);
 
                 //write file
                 foreach (string line in lines)
@@ -1980,6 +2113,25 @@ namespace Oakhill_Rover
             //ps.Dispose();
 
             return buffer;
+        }
+
+        public void processTimer()
+        {
+            //DateTime start_time;
+            //DateTime end_time;
+            //TimeSpan ts;
+
+            //start_time = DateTime.Now;
+
+            ////do some timed stuff
+
+            //end_time = DateTime.Now;
+            //ts = end_time - start_time;
+
+            //Debug.Print("Write Speed >>>");
+            //Debug.Print("Total time: " + ts.ToString());
+            //Debug.Print("Total time in seconds: " + ((float)ts.Ticks / TimeSpan.TicksPerSecond).ToString() + " seconds");
+            ////Debug.Print("Speed: " + (((float)1024) / ((float)ts.Ticks / TimeSpan.TicksPerSecond)).ToString() + " KBytes/s");
         }
 
         /*

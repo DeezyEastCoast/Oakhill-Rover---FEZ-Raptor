@@ -197,6 +197,25 @@ namespace Skewworks.Drivers.GPS
             _dstEnable = true;
         }
 
+        public MTK3339(string COMPort, SubscriptionLevels SubscriptionLevel, UpdateRates UpdateRate = UpdateRates.GPS_1HZ, bool forNoPurpose = false)
+        {
+            // Create COM Port
+            _gpsSP = new SerialPort(COMPort, 9600);
+            _gpsSP.Open();
+       
+            // Set our Update Rate
+            _rate = UpdateRate;
+            SetUpdateRate();
+
+            // Set our Subscription Level
+            _subLevel = SubscriptionLevel;
+            SetSubscriptionLevel();
+
+            // Time value
+            _timezoneOffset = -6;
+            _dstEnable = true;
+        }
+
         #endregion
 
         #region Events
@@ -464,6 +483,97 @@ namespace Skewworks.Drivers.GPS
         /// <param name="sender"></param>
         /// <param name="e"></param>
         private void _gpsSP_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        {
+            int read, pos;
+            string tmp = string.Empty;
+            string cmd;
+            string[] data;
+
+            try
+            {
+                byte[] b = new byte[_gpsSP.BytesToRead];
+
+                // Check for a 0 byte buffer
+                if (b.Length == 0)
+                    return;
+
+                // Read data
+                read = _gpsSP.Read(b, 0, b.Length);
+
+                // Convert to string (using any previously stored buffer)
+                tmp = _dataBuffer + new string(UTF8Encoding.UTF8.GetChars(b));
+
+                // Find lines
+                while (true)
+                {
+                    // Check for end of data
+                    if (tmp == string.Empty)
+                        break;
+
+                    // Look for next end of line
+                    pos = tmp.IndexOf("\r\n");
+
+                    if (pos < 0)
+                    {
+                        // None found, store in buffer
+                        _dataBuffer = tmp;
+                        break;
+                    }
+                    else
+                    {
+                        // Clear out buffer
+                        _dataBuffer = null;
+
+                        // Separate line
+                        cmd = tmp.Substring(0, pos);
+
+                        // Remove line
+                        tmp = tmp.Substring(pos + 2);
+
+                        // Remove Checksum
+                        if (cmd.Substring(cmd.Length - 3, 1) == "*")
+                            cmd = cmd.Substring(0, cmd.Length - 3);
+
+                        // Split line
+                        data = cmd.Split(',');
+
+                        // Proccess command
+                        switch (data[0])
+                        {
+                            case "$PMTK001":
+                                // Just echoing, do nothing
+                                break;
+                            case "$GPGGA":
+                                ParseGGAData(data);
+                                break;
+                            case "$GPGSA":
+                                ParseGSAData(data);
+                                break;
+                            case "$GPRMC":
+                                ParseRMCData(data);
+                                break;
+                            case "$GPVTG":
+                                ParseVTGData(data);
+                                break;
+                            case "$GPGSV":
+                                ParseGSVData(data);
+                                break;
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                Debug.Print("Parse error");
+                OnError(this, tmp);
+                _dataBuffer = null;
+            }
+        }
+
+        /// <summary>
+        /// Reads Serial data in 
+        /// </summary>
+        public void _gpsSP_DataPoll()
         {
             int read, pos;
             string tmp = string.Empty;

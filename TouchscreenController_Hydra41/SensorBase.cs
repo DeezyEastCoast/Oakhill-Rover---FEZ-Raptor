@@ -49,7 +49,13 @@ namespace Adafruit10DOFIMU
 
 		}
 
-		/// <summary>
+        /// <summary>
+        /// Class implementation to check if the I2CDevice is responsive.
+        /// </summary>
+        /// <returns></returns>
+        public abstract bool IsAlive();
+        
+        /// <summary>
 		/// Class implementation to read from the I2CDevice.
 		/// </summary>
 		/// <returns>A boolean value that represent the read is completed</returns>
