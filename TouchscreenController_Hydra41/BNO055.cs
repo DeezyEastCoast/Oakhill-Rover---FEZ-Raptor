@@ -31,7 +31,7 @@ namespace Adafruit10DOFIMU
         const byte NUM_BNO055_OFFSET_REGISTERS = 22;
 
         byte adafruit_bno055_opmode_t_mode;
-        adafruit_bno055_offsets_t BNO_SENSOR_OFFSETS;
+        public adafruit_bno055_offsets_t BNO_SENSOR_OFFSETS;
 
         public struct adafruit_bno055_offsets_t
         {
@@ -714,6 +714,7 @@ namespace Adafruit10DOFIMU
 
              Thread.Sleep(25);
         }
+
 
 
         //public Quaternion getQuat()

@@ -193,7 +193,7 @@ namespace Skewworks.Drivers.GPS
             SetSubscriptionLevel();
 
             // Time value
-            _timezoneOffset = -6;
+            _timezoneOffset = -5;
             _dstEnable = true;
         }
 
@@ -212,7 +212,7 @@ namespace Skewworks.Drivers.GPS
             SetSubscriptionLevel();
 
             // Time value
-            _timezoneOffset = -6;
+            _timezoneOffset = -5;
             _dstEnable = true;
         }
 

@@ -42,16 +42,18 @@ namespace Oakhill_Rover
         static DRIVE_MODE DRIVE_MODE_ROVER = DRIVE_MODE.MANUAL;
 
         const int ROVER_TIMER_INTERVAL = 50;
-        static int MANUAL_MODE_TICK_INTERVAL = 20; // time interval in units of Manual mode to run this mode --> 20 * 50 mSec = 500 mSec interval
-        static int AUTO_MODE_TICK_INTERVAL = 20; // time interval in units of Manual mode to run this mode --> 20 * 50 mSec = 1000 mSec interval
-        static int COMPASS_MODE_TICK_INTERVAL = 20; // time interval in units of Manual mode to run this mode --> 20 * 50 mSec = 1000 mSec interval
+        static int MANUAL_MODE_TICK_INTERVAL = 20; // time interval in units of ROVER_TIMER_INTERVAL to run this mode --> 20 * 50 mSec = 500 mSec interval
+        static int AUTO_MODE_TICK_INTERVAL = 20; // time interval in units of ROVER_TIMER_INTERVAL to run this mode --> 20 * 50 mSec = 1000 mSec interval
+        static int COMPASS_MODE_TICK_INTERVAL = 20; // time interval in units of ROVER_TIMER_INTERVAL to run this mode --> 20 * 50 mSec = 1000 mSec interval
 
         static GT.Timer ROVER_TIMER;
         static GT.Timer GroundEfxTimer; //Timer to run ground efx sho
 
         static bool DEBUG_LED_STATE = true;
-        static bool READCOMPLETE_IMU = false;
+        //static bool READCOMPLETE_IMU = false;
         static uint ROVER_LOOP_CNT = 0;
+        static bool BNO_SETTINGS_SAVED = false;
+        static string BNO_SETTINGS_FILE = "roverBNO.txt";
 
         static int MA_RANGE_INDEX = 0;
         static int MAX_RANGE = 100;  //max range in inches to care about
@@ -65,6 +67,7 @@ namespace Oakhill_Rover
         static double SIGNAL_QUALITY = 0;
 
         static int picCounter = 0;
+        static string ERR_STATE = "NONE";
         //static bool roverHeadLights = false;
         //static bool roverTakePicture = false;
 
@@ -87,9 +90,9 @@ namespace Oakhill_Rover
 
         //Compass Navigation
         static int TARGET_HEADING;  // where we want to go to reach current waypoint
-        static int CURRENT_HEADING; // where we are actually facing now
+        static double CURRENT_HEADING; // where we are actually facing now
         static int HEADING_ERROR;  // signed (+/-) difference between targetHeading and currentHeading
-        static readonly int HEADING_TOLERANCE = 7;  // tolerance +/- (in degrees) within which we don't attempt to turn to intercept targetHeading
+        static readonly int HEADING_TOLERANCE = 10;  // tolerance +/- (in degrees) within which we don't attempt to turn to intercept targetHeading
 
         //GPS Navigation
         static WAYPOINT homeWaypoint;
@@ -182,12 +185,15 @@ namespace Oakhill_Rover
         static readonly int NUMBER_WAYPOINTS = 4; // enter the numebr of way points here (will run from 0 to (n-1))
         static int targetWaypointNum = 0;  // current waypoint number; will run from 0 to (NUMBER_WAYPOINTS -1); start at -1 and gets initialized during setup()
         static WAYPOINT[] targetWaypointList = new WAYPOINT[NUMBER_WAYPOINTS];
+        static WAYPOINT[] gsTargetWaypointList = new WAYPOINT[NUMBER_WAYPOINTS];
         static GPSTIME curGPSTIME = new GPSTIME(0, 0, 0);
         static GPSDATE curGPSDATE = new GPSDATE(0, 0, 0);
 
         //Steering/Turning
-        enum TURN { LEFT = 200, RIGHT = 56, STRAIGHT = 128 };
-        static TURN turnDirection = TURN.STRAIGHT;
+        //enum TURN { LEFT = 200, RIGHT = 56, STRAIGHT = 128 };
+        enum TURN { RIGHT = 164, LEFT = 92, STRAIGHT = 128 };
+        static TURN turnDirection_DESIRED = TURN.STRAIGHT;
+        static TURN turnDirection_CURRENT = TURN.STRAIGHT;
 
         //Object avoidance distances (inches)
         static byte SAFE_DISTANCE = 60;
@@ -237,6 +243,8 @@ namespace Oakhill_Rover
         //bool IMU_ACCEL_ALIVE = IMU_Adafruit.Accelerometer.IsAlive();
         //bool IMU_GYRO_ALIVE = IMU_Adafruit.Gyroscope.IsAlive();
 
+
+        static double DECLINATION_ANGLE = 0.0;
         static BNO055 IMU_BNO = new BNO055();
 
         byte[] sysStatus = new byte[] { 0, 0, 0 };
@@ -317,15 +325,45 @@ namespace Oakhill_Rover
             Debug.Print("Program Started");
 
             #region GENERAL SETUP
+            //Attelboro, MA: Capron park test mission  
+            //targetWaypointList[0].dMapLatitude = 41.9378456849981376;
+            //targetWaypointList[0].dMapLongitude = -71.2962967157363892;
+            //targetWaypointList[1].dMapLatitude = 41.9380132828811867;
+            //targetWaypointList[1].dMapLongitude = -71.2957066297531128;
+            //targetWaypointList[2].dMapLatitude = 41.937618230023773;
+            //targetWaypointList[2].dMapLongitude = -71.295427680015564;
+            //targetWaypointList[3].dMapLatitude = 41.9374466406466198;
+            //targetWaypointList[3].dMapLongitude = -71.2960553169250488;
 
-            targetWaypointList[0].dMapLatitude = 41.9378456849981376;
-            targetWaypointList[0].dMapLongitude = -71.2962967157363892;
-            targetWaypointList[1].dMapLatitude = 41.9380132828811867;
-            targetWaypointList[1].dMapLongitude = -71.2957066297531128;
-            targetWaypointList[2].dMapLatitude = 41.937618230023773;
-            targetWaypointList[2].dMapLongitude = -71.295427680015564;
-            targetWaypointList[3].dMapLatitude = 41.9374466406466198;
-            targetWaypointList[3].dMapLongitude = -71.2960553169250488;
+            ////Charlotte, NC: Veterans Memorial Park Test Mission
+            //targetWaypointList[0].dMapLatitude = 35.217762;
+            //targetWaypointList[0].dMapLongitude = -80.802774;
+            //targetWaypointList[1].dMapLatitude = 35.218061; 
+            //targetWaypointList[1].dMapLongitude = -80.802755;
+            //targetWaypointList[2].dMapLatitude = 35.218058;
+            //targetWaypointList[2].dMapLongitude = -80.802328;
+            //targetWaypointList[3].dMapLatitude = 35.217770;
+            //targetWaypointList[3].dMapLongitude = -80.802347;
+
+            //Charlotte, NC: Romany Rd Park Test Mission
+            //targetWaypointList[0].dMapLatitude = 35.206633;
+            //targetWaypointList[0].dMapLongitude = -80.844797;
+            //targetWaypointList[1].dMapLatitude = 35.206347;
+            //targetWaypointList[1].dMapLongitude = -80.844144;
+            //targetWaypointList[2].dMapLatitude = 35.206080;
+            //targetWaypointList[2].dMapLongitude = -80.844510;
+            //targetWaypointList[3].dMapLatitude = 35.206483;
+            //targetWaypointList[3].dMapLongitude = -80.845065;
+
+            //Charlotte, NC: harlotteville Rd Park Test Mission
+            targetWaypointList[0].dMapLatitude = 35.2167000;
+            targetWaypointList[0].dMapLongitude = -80.8270400;
+            targetWaypointList[1].dMapLatitude = 35.2169233;
+            targetWaypointList[1].dMapLongitude = -80.8266567;
+            targetWaypointList[2].dMapLatitude = 35.2171633;
+            targetWaypointList[2].dMapLongitude = -80.8267283;
+            targetWaypointList[3].dMapLatitude = 35.2169683;
+            targetWaypointList[3].dMapLongitude = -80.8271650;
 
             //pin 3 port 13 is ultrasonic distance sensor Vcc/512 per inch --> 6.4mV per inch
             //pin 6 port 13 is ultrasonic distance sensor RX pin, High = enabled, Low = Disabled
@@ -432,7 +470,45 @@ namespace Oakhill_Rover
             //    }
             //}
 
-            bool IMU_PRESS_ALIVE = IMU_BNO.IsAlive();
+            bool BNO_IS_ALIVE = IMU_BNO.IsAlive();
+
+            if (BNO_IS_ALIVE) //read saved calibration settings
+            {
+                if (!roverSDCARD.IsCardMounted)
+                {
+                    roverSDCARD.Mount();
+                    Thread.Sleep(250);
+                }
+
+                if (roverSDCARD.IsCardMounted)
+                    SD_ROOT_DIRECTORY = VolumeInfo.GetVolumes()[0].RootDirectory;
+
+                if (File.Exists(SD_ROOT_DIRECTORY + @"\" + BNO_SETTINGS_FILE))
+                {
+                    string[] tempBNOSettings = ReadFileLines(BNO_SETTINGS_FILE, 11);
+
+                    if (tempBNOSettings != null)
+                    {
+                        IMU_BNO.BNO_SENSOR_OFFSETS.accel_offset_x = Convert.ToUInt16(tempBNOSettings[0]);
+                        IMU_BNO.BNO_SENSOR_OFFSETS.accel_offset_y = Convert.ToUInt16(tempBNOSettings[1]);
+                        IMU_BNO.BNO_SENSOR_OFFSETS.accel_offset_z = Convert.ToUInt16(tempBNOSettings[2]);
+                        IMU_BNO.BNO_SENSOR_OFFSETS.gyro_offset_x = Convert.ToUInt16(tempBNOSettings[3]);
+                        IMU_BNO.BNO_SENSOR_OFFSETS.gyro_offset_y = Convert.ToUInt16(tempBNOSettings[4]);
+                        IMU_BNO.BNO_SENSOR_OFFSETS.gyro_offset_z = Convert.ToUInt16(tempBNOSettings[5]);
+                        IMU_BNO.BNO_SENSOR_OFFSETS.mag_offset_x = Convert.ToUInt16(tempBNOSettings[6]);
+                        IMU_BNO.BNO_SENSOR_OFFSETS.mag_offset_y = Convert.ToUInt16(tempBNOSettings[7]);
+                        IMU_BNO.BNO_SENSOR_OFFSETS.mag_offset_z = Convert.ToUInt16(tempBNOSettings[8]);
+                        IMU_BNO.BNO_SENSOR_OFFSETS.accel_radius = Convert.ToUInt16(tempBNOSettings[9]);
+                        IMU_BNO.BNO_SENSOR_OFFSETS.mag_radius = Convert.ToUInt16(tempBNOSettings[10]);
+
+                        IMU_BNO.setSensorOffsets(IMU_BNO.BNO_SENSOR_OFFSETS);
+
+                        Thread.Sleep(500);
+                    }
+                }
+
+                roverSDCARD.Unmount();
+            }
 
             //IMU_BNO.getSystemStatus(ref sysStatus[0], ref sysStatus[1], ref sysStatus[2]);
             //Debug.Print("SystemStatus: " + sysStatus[0].ToString() + " -- " + sysStatus[1].ToString() + " -- " + sysStatus[2].ToString() + "\n\r");
@@ -568,8 +644,8 @@ namespace Oakhill_Rover
             Power_Uart_Mux.OHS_UartMux.myActiveComPort = 0;
             roverGPS = new MTK3339(Gadgeteer.Socket.GetSocket(4, true, null, null).SerialPortName, MTK3339.SubscriptionLevels.RMCGGA, MTK3339.UpdateRates.GPS_1HZ);
             //roverGPS = new MTK3339(Gadgeteer.Socket.GetSocket(4, true, null, null).SerialPortName, MTK3339.SubscriptionLevels.RMCGGA, MTK3339.UpdateRates.GPS_1HZ,true);
-            roverGPS.TimeChanged += gpsTimeChange;
-            roverGPS.DateChanged += gpsDateChange;
+            //roverGPS.TimeChanged += gpsTimeChange;
+            //roverGPS.DateChanged += gpsDateChange;
             //roverGPS.CoordinatesUpdated += GPS_CoordinatesUpdated;
 
             //void GPS_CoordinatesUpdated(MTK3339 sender)
@@ -606,6 +682,7 @@ namespace Oakhill_Rover
                 case DRIVE_MODE.MANUAL:
 
                     DRIVE_MODE_ROVER = newMode;
+                    targetWaypointNum = 0;
 
                     break;
 
@@ -761,6 +838,58 @@ namespace Oakhill_Rover
 
                                 break;
 
+                            case "$OSS": //Set settings rover
+
+                                try
+                                {
+                                    switchMode(DRIVE_MODE.MANUAL);
+
+                                    string[] newSettings = ps2DataLine.Split(new char[] { ',', '*' });
+
+                                    DECLINATION_ANGLE = Convert.ToDouble(newSettings[1]);
+
+                                    string errData = "$ACK,OSS*";
+                                    errData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(errData)))) + "\r\n"); //add checksum, cr and lf
+                                    lairdComPort.Write(Encoding.UTF8.GetBytes(errData), 0, errData.Length);
+                                }
+                                catch (Exception)
+                                {
+                                    string errData = "$NAK,OSS*";
+                                    errData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(errData)))) + "\r\n"); //add checksum, cr and lf
+                                    Debug.Print("******$OSS Exception******\n\r");
+                                }
+
+                                break;
+
+                            case"$OWP": //load a "waypoint" mission from the ground station
+
+                                try
+                                {
+                                    switchMode(DRIVE_MODE.MANUAL);
+
+                                    string[] waypoints = ps2DataLine.Split(new char[] { ',', '*' });
+                                    targetWaypointList[0].dMapLatitude = Convert.ToDouble(waypoints[1]);
+                                    targetWaypointList[0].dMapLongitude = Convert.ToDouble(waypoints[2]);
+                                    targetWaypointList[1].dMapLatitude = Convert.ToDouble(waypoints[3]);
+                                    targetWaypointList[1].dMapLongitude = Convert.ToDouble(waypoints[4]);
+                                    targetWaypointList[2].dMapLatitude = Convert.ToDouble(waypoints[5]);
+                                    targetWaypointList[2].dMapLongitude = Convert.ToDouble(waypoints[6]);
+                                    targetWaypointList[3].dMapLatitude = Convert.ToDouble(waypoints[7]);
+                                    targetWaypointList[3].dMapLongitude = Convert.ToDouble(waypoints[8]);
+
+                                    string errData = "$ACK,OWP*";
+                                    errData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(errData)))) + "\r\n"); //add checksum, cr and lf
+                                    lairdComPort.Write(Encoding.UTF8.GetBytes(errData), 0, errData.Length);
+                                }
+                                catch (Exception)
+                                {
+                                    string errData = "$NAK,OWP*";
+                                    errData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(errData)))) + "\r\n"); //add checksum, cr and lf
+                                    Debug.Print("******$OWP Exception******\n\r");
+                                }
+
+                                break;
+
                             case "$GFX": //Ground Efx LED's
 
                                 groundEfxLedControl((byte)Convert.ToInt32(ps2DataLine.Substring(5, 2), 16));
@@ -859,66 +988,137 @@ namespace Oakhill_Rover
         /// </summary>
         static void AutonomousMode_Tick(uint LOOP_TICK)
         {
+            string tempDir = "?";
+            string tempSpd = "?";
+            
             //check sonar distance
             SONAR_DISTANCE = getSonarRangeAvg();
 
+            //get current compass heading average
+            ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
+            CURRENT_HEADING += ATTITUDE_VECTOR.x;
+
             if (LOOP_TICK % AUTO_MODE_TICK_INTERVAL == 0)
             {
+                ERR_STATE = "$ACK,ORA";
+
                 //update gps
                 //roverGPS._gpsSP_DataPoll();
-
-                //get current GPS position --------- PUT A VALID LOCK/FIX CHECK ON GPS
-                currentWaypoint.dMapLatitude = roverGPS.MapLatitude;
-                currentWaypoint.dMapLongitude = roverGPS.MapLongitude;
-
-                ////////////currentWaypoint.dMapLatitude = 41.937618230023773; //test GPS points
-                ////////////currentWaypoint.dMapLongitude = -71.295427680015564; //test GPS points
 
                 targetWaypoint.dMapLatitude = targetWaypointList[targetWaypointNum].dMapLatitude;
                 targetWaypoint.dMapLongitude = targetWaypointList[targetWaypointNum].dMapLongitude;
 
-                // Process GPS --- update the course and distance to waypoint based on our new position
-                distanceToWaypoint();
-                courseToWaypoint();
+                //get current GPS position --------- PUT A VALID LOCK/FIX CHECK ON GPS
+                if (roverGPS.FixAvailable)
+                {
+                    currentWaypoint.dMapLatitude = roverGPS.MapLatitude;
+                    currentWaypoint.dMapLongitude = roverGPS.MapLongitude;
+
+                    //currentWaypoint.dMapLatitude = 41.937618230023773; //test GPS points for Attleboro, MA
+                    //currentWaypoint.dMapLongitude = -71.295427680015564; //test GPS points for Attleboro, MA
+
+                    //currentWaypoint.dMapLatitude = 35.207644; //test GPS points for The Venue -- Charlotte, NC 
+                    //currentWaypoint.dMapLongitude = -80.810116; //test GPS points for The Venue -- Charlotte, NC
+
+                    try
+                    {
+                        // Process GPS --- update the course and distance to waypoint based on our new position
+                        distanceToWaypoint();
+                        courseToWaypoint();
+                    }
+                    catch (Exception)
+                    {
+                        ERR_STATE = "$NAK,ORA";
+                        Debug.Print("******AutoMode_Tick Exception******\n\r");
+                    }
+                }
+                else
+                {
+                    currentWaypoint.dMapLatitude = 0.0;
+                    currentWaypoint.dMapLongitude = 0.0;
+                }
 
                 //get current compass heading
-                ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
-                CURRENT_HEADING = (int)ATTITUDE_VECTOR.x;
+                //ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
+                //CURRENT_HEADING = (int)ATTITUDE_VECTOR.x;
+                CURRENT_HEADING = (CURRENT_HEADING / AUTO_MODE_TICK_INTERVAL) + DECLINATION_ANGLE;
 
                 calcDesiredTurn();
 
-                if (roverGPS.FixAvailable)
-                    moveAndAvoid();
+                //if (roverGPS.FixAvailable)
+                moveAndAvoid();
+
+                switch (turnDirection_DESIRED)
+                {
+                    case TURN.STRAIGHT:
+                        tempDir = "STR";
+                        break;
+                    case TURN.LEFT:
+                        tempDir = "LFT";
+                        break;
+                    case TURN.RIGHT:
+                        tempDir = "RGT";
+                        break;
+                    default:
+                        tempDir = "?";
+                        break;
+                }
+
+                switch (CURRENT_NAV_SPEED)
+                {
+                    case STOP_SPEED:
+                        tempSpd = "STP";
+                        break;
+                    case SLOW_SPEED: //slow and turn are same speed
+                        tempSpd = "SLW";
+                        break;
+                    case NORMAL_SPEED:
+                        tempSpd = "NRM";
+                        break;
+                    case FAST_SPEED:
+                        tempSpd = "FST";
+                        break;
+                    case REVERSE_SPEED:
+                        tempSpd = "REV";
+                        break;
+                    default:
+                        tempSpd = "?";
+                        break;
+                }
 
                 //output oakhill rover autonomous
                 roverData = "$ORA,"
                                   + SONAR_DISTANCE
-                            + "," + CURRENT_HEADING
+                            + "," + (int)CURRENT_HEADING
                             + "," + currentWaypoint.dMapLatitude
                             + "," + currentWaypoint.dMapLongitude
                             + "," + distanceToTarget
                             + "," + TARGET_HEADING
                             + "," + targetWaypointNum
-                            + "," + (byte)turnDirection
-                            + "," + (byte)CURRENT_NAV_SPEED
+                            + "," + tempDir//(byte)turnDirection_DESIRED
+                            + "," + tempSpd//(byte)CURRENT_NAV_SPEED
                             + "," + ((byte)DRIVE_MODE_ROVER).ToString()
+                            + "," + roverGPS.SatellitesUsed
+                            + "," + (int)roverGPS.HorizontalDilution
+                            + "," + ERR_STATE
 
                     //+ "," + (1.0 - ((IMU_Adafruit.Bmp180.Pressure/101910)^.19)) //convert pressure to altitude in meters, 1019.1hPa as sealevel in Pawtucket
                             + "*";
 
                 roverData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(roverData)))) + "\r\n"); //add checksum, cr and lf
 
-                //log auto data
-                WriteFileLines("roverLog.txt", new string[] {curGPSDATE.month.ToString() + "/" + curGPSDATE.day.ToString() + "/" + curGPSDATE.year.ToString() + "," +
-                                                             curGPSTIME.hour.ToString() + ":" + curGPSTIME.min.ToString() + ":" + curGPSTIME.sec.ToString() + "," + 
-                                                              roverGPS.SatellitesUsed.ToString() + "," + roverData.TrimEnd(new char[] { '\n', '\r' })  });
+                ////log auto data
+                //WriteFileLines("roverLog.txt", new string[] {curGPSDATE.month.ToString() + "/" + curGPSDATE.day.ToString() + "/" + curGPSDATE.year.ToString() + "," +
+                //                                             curGPSTIME.hour.ToString() + ":" + curGPSTIME.min.ToString() + ":" + curGPSTIME.sec.ToString() + "," + 
+                //                                              roverGPS.SatellitesUsed.ToString() + "," + roverData.TrimEnd(new char[] { '\n', '\r' })  });
 
-                curGPSTIME.hour = 0; curGPSTIME.min = 0; curGPSTIME.sec = 0;
-                //Debug.Print(roverData);
+                //curGPSTIME.hour = 0; curGPSTIME.min = 0; curGPSTIME.sec = 0;
 
+                CURRENT_HEADING = 0;
+
+                Debug.Print(roverData);
                 lairdComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
             }
-
         }
 
         /// <summary>
@@ -926,22 +1126,24 @@ namespace Oakhill_Rover
         /// </summary>
         static void ManualMode_Tick(uint LOOP_TICK)
         {
+            //get current compass heading average
+            ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
+            CURRENT_HEADING += ATTITUDE_VECTOR.x;
+
             if (LOOP_TICK % MANUAL_MODE_TICK_INTERVAL == 0)
             {
                 int _temperature = 0;
                 int _pressure = 0;
-                CURRENT_HEADING = 0;
+                //CURRENT_HEADING = 0;
 
                 //update gps
                 //roverGPS._gpsSP_DataPoll();
 
-                //if (READCOMPLETE_IMU)
-                //{
-                ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
-                CURRENT_HEADING = (int)ATTITUDE_VECTOR.x;
+                //ATTITUDE_VECTOR = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
+                //CURRENT_HEADING = ATTITUDE_VECTOR.x;
+                CURRENT_HEADING = (CURRENT_HEADING / MANUAL_MODE_TICK_INTERVAL) + DECLINATION_ANGLE;
 
                 _temperature = (int)(IMU_BNO.getTemperature() * 1.8000) + 32;
-                //}
 
                 if (roverGPS.FixAvailable)
                 {
@@ -961,13 +1163,16 @@ namespace Oakhill_Rover
                                       + getBatteryVoltage()
                                 + "," + getBatteryCurrent()
                                 + "," + getSonarRangeAvg()
-                                + "," + CURRENT_HEADING
+                                + "," + (int)CURRENT_HEADING
                                 + "," + _temperature
                                 + "," + _pressure
                                 + "," + currentWaypoint.dMapLatitude
                                 + "," + currentWaypoint.dMapLongitude
                                 + "," + roverGPS.FixAvailable
                                 + "," + ((byte)DRIVE_MODE_ROVER).ToString()
+                                + "," + roverGPS.SatellitesUsed
+                                + "," + (int)roverGPS.SpeedInMPH
+                                + "," + (int)roverGPS.HorizontalDilution
 
                                 //+ "," + (1.0 - ((IMU_Adafruit.Bmp180.Pressure/101910)^.19)) //convert pressure to altitude in meters, 1019.1hPa as sealevel in Pawtucket
                                 + "*";
@@ -975,13 +1180,17 @@ namespace Oakhill_Rover
                     roverData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(roverData)))) + "\r\n"); //add checksum, cr and lf
 
                     //WriteFileLines("roverLog.txt", new string[] { roverData });
-                    //Debug.Print(roverData);
+                    Debug.Print(roverData);
                     lairdComPort.Write(Encoding.UTF8.GetBytes(roverData), 0, roverData.Length);
                 }
                 catch (Exception)
                 {
+                    roverData = "$NAK,ORD*";
+                    roverData += (new string(byteToHex(getChecksum(Encoding.UTF8.GetBytes(roverData)))) + "\r\n"); //add checksum, cr and lf
                     Debug.Print("******ManualMode_Tick Exception******\n\r");
                 }
+
+                CURRENT_HEADING = 0;
             }
         }
 
@@ -1011,11 +1220,43 @@ namespace Oakhill_Rover
                     + "," + (int)ATTITUDE_VECTOR.z
                     + "*";
 
+                //saves sensor offsets if sensor is calibrated and settings have not been saved yet.
+                if (IMU_BNO.getSensorOffsets() && !BNO_SETTINGS_SAVED)
+                {
+                    if (!roverSDCARD.IsCardMounted)
+                    {
+                        roverSDCARD.Mount();
+                        Thread.Sleep(250);
+                    }
+
+                    if (roverSDCARD.IsCardMounted)
+                        SD_ROOT_DIRECTORY = VolumeInfo.GetVolumes()[0].RootDirectory;
+
+                    ////Save sensor offsets to file.
+                    bool writeSuccess = WriteFileLines(BNO_SETTINGS_FILE, new string[] {
+                    IMU_BNO.BNO_SENSOR_OFFSETS.accel_offset_x.ToString(),
+                    IMU_BNO.BNO_SENSOR_OFFSETS.accel_offset_y.ToString(),
+                    IMU_BNO.BNO_SENSOR_OFFSETS.accel_offset_z.ToString(),
+                    IMU_BNO.BNO_SENSOR_OFFSETS.gyro_offset_x.ToString(), 
+                    IMU_BNO.BNO_SENSOR_OFFSETS.gyro_offset_y.ToString(), 
+                    IMU_BNO.BNO_SENSOR_OFFSETS.gyro_offset_z.ToString(), 
+                    IMU_BNO.BNO_SENSOR_OFFSETS.mag_offset_x.ToString(),
+                    IMU_BNO.BNO_SENSOR_OFFSETS.mag_offset_y.ToString(),
+                    IMU_BNO.BNO_SENSOR_OFFSETS.mag_offset_z.ToString(),
+                    IMU_BNO.BNO_SENSOR_OFFSETS.accel_radius.ToString(),
+                    IMU_BNO.BNO_SENSOR_OFFSETS.mag_radius.ToString()
+                    });
+
+                    roverSDCARD.Unmount();
+
+                    if (writeSuccess) { Debug.Print("BNO sensor offsets saved to file."); BNO_SETTINGS_SAVED = true;}
+                    else Debug.Print("Could not save BNO sensor offsetsto file.");
+                }
+
                 //BNO055.Vector attitude_VEC;
                 //BNO055.Vector attitude_MAG;
                 //BNO055.Vector attitude_ACC;
                 //BNO055.Vector attitude_GYRO;
-
                 //attitude_VEC = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_EULER);
                 //attitude_MAG = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_MAGNETOMETER);
                 //attitude_ACC = IMU_BNO.getVector(BNO055.adafruit_vector_type_t.VECTOR_ACCELEROMETER);
@@ -1203,6 +1444,8 @@ namespace Oakhill_Rover
 
             motor_steering_ComPort.Write(new byte[] { 0xFF, 0x01, angle }, 0, 3);
             //Debug.Print("Steering: " + angle.ToString());
+
+            if(DRIVE_MODE_ROVER == DRIVE_MODE.AUTO) turnDirection_CURRENT = (TURN)angle;
         }
 
         /// <summary>
@@ -1737,7 +1980,7 @@ namespace Oakhill_Rover
         /// </summary>
         static void calcDesiredTurn()
         {
-            HEADING_ERROR = TARGET_HEADING - CURRENT_HEADING;
+            HEADING_ERROR = TARGET_HEADING - (int)CURRENT_HEADING;
 
             // adjust for compass wrap
             if (HEADING_ERROR < -180)
@@ -1747,13 +1990,13 @@ namespace Oakhill_Rover
 
             // calculate which way to turn to intercept the targetHeading
             if (System.Math.Abs(HEADING_ERROR) <= HEADING_TOLERANCE)      // if within tolerance, don't turn
-                turnDirection = TURN.STRAIGHT;
+                turnDirection_DESIRED = TURN.STRAIGHT;
             else if (HEADING_ERROR < 0)
-                turnDirection = TURN.LEFT;
+                turnDirection_DESIRED = TURN.LEFT;
             else if (HEADING_ERROR > 0)
-                turnDirection = TURN.RIGHT;
+                turnDirection_DESIRED = TURN.RIGHT;
             else
-                turnDirection = TURN.STRAIGHT;
+                turnDirection_DESIRED = TURN.STRAIGHT;
         }
 
         /// <summary>
@@ -1796,8 +2039,6 @@ namespace Oakhill_Rover
         static void nextWaypoint()
         {
             targetWaypointNum++;
-            targetWaypoint.dMapLatitude = targetWaypointList[targetWaypointNum].dMapLatitude;
-            targetWaypoint.dMapLongitude = targetWaypointList[targetWaypointNum].dMapLongitude;
 
             if ((targetWaypoint.dMapLatitude == 0 && targetWaypoint.dMapLongitude == 0) || targetWaypointNum >= NUMBER_WAYPOINTS)    // last waypoint reached? 
             {
@@ -1806,14 +2047,20 @@ namespace Oakhill_Rover
                 motorSpeed(STOP_SPEED);
                 servoAngle((byte)TURN.STRAIGHT);
 
+                switchMode(DRIVE_MODE.MANUAL);
+
+                return;
                 //send mission complete msg to controller
             }
 
+            targetWaypoint.dMapLatitude = targetWaypointList[targetWaypointNum].dMapLatitude;
+            targetWaypoint.dMapLongitude = targetWaypointList[targetWaypointNum].dMapLongitude;
+
             // update the course and distance to waypoint based on our new position
-            distanceToWaypoint();
-            courseToWaypoint();
-            distanceToTarget = originalDistanceToTarget = distanceToWaypoint();
-            courseToWaypoint();
+            distanceToTarget = distanceToWaypoint();
+            //courseToWaypoint();
+            //distanceToTarget = originalDistanceToTarget = distanceToWaypoint();
+            //courseToWaypoint();
 
         }  // nextWaypoint()
 
@@ -1846,26 +2093,37 @@ namespace Oakhill_Rover
         /// </summary>
         static void moveAndAvoid()
         {
+            //use this for no obstacle avoidance
+            if (turnDirection_DESIRED == TURN.STRAIGHT)
+                motorSpeed(FAST_SPEED);
+            else
+                motorSpeed(TURN_SPEED);
+
+            servoAngle((byte)turnDirection_DESIRED);
+
+            return;
+
+            /*  USE THIS TO TURN ON OBSTACLE AVOIDANCE
             if (SONAR_DISTANCE >= SAFE_DISTANCE)       // no close objects in front of car
             {
-                if (turnDirection == TURN.STRAIGHT)
+                if (turnDirection_DESIRED == TURN.STRAIGHT)
                     motorSpeed(FAST_SPEED);
                 else
                     motorSpeed(TURN_SPEED);
 
-                servoAngle((byte)turnDirection);
+                servoAngle((byte)turnDirection_DESIRED);
 
                 return;
             }
 
             if (SONAR_DISTANCE > TURN_DISTANCE && SONAR_DISTANCE < SAFE_DISTANCE)    // not yet time to turn, but slow down
             {
-                if (turnDirection == TURN.STRAIGHT)
+                if (turnDirection_DESIRED == TURN.STRAIGHT)
                     motorSpeed(NORMAL_SPEED);
                 else
                     motorSpeed(TURN_SPEED);
 
-                servoAngle((byte)turnDirection);     //turn to navigate
+                servoAngle((byte)turnDirection_DESIRED);     //turn to navigate
 
                 return;
             }
@@ -1874,15 +2132,15 @@ namespace Oakhill_Rover
             {
                 motorSpeed(SLOW_SPEED);      // slow down
 
-                switch (turnDirection)
+                switch (turnDirection_CURRENT)
                 {
                     case TURN.STRAIGHT:                  // going straight currently, so start new turn
                         {
                             if (HEADING_ERROR <= 0)
-                                turnDirection = TURN.LEFT;
+                                turnDirection_DESIRED = TURN.LEFT;
                             else
-                                turnDirection = TURN.RIGHT;
-                            servoAngle((byte)turnDirection);  // turn in the new direction
+                                turnDirection_DESIRED = TURN.RIGHT;
+                            servoAngle((byte)turnDirection_DESIRED);  // turn in the new direction
                             break;
                         }
                     case TURN.LEFT:                         // if already turning left, try right
@@ -1905,7 +2163,7 @@ namespace Oakhill_Rover
             {
                 motorSpeed(STOP_SPEED);                      // stop 
                 servoAngle((byte)TURN.STRAIGHT);             // straighten up
-                turnDirection = TURN.STRAIGHT;
+                turnDirection_DESIRED = TURN.STRAIGHT;
                 motorSpeed(REVERSE_SPEED);                   // go back at higher speed
 
                 while (SONAR_DISTANCE < TURN_DISTANCE)       // backup until we get safe clearance
@@ -1934,6 +2192,7 @@ namespace Oakhill_Rover
                 
                 return;
             } // end of IF TOO CLOSE
+             */
         }
 
         #endregion
@@ -2030,9 +2289,9 @@ namespace Oakhill_Rover
         /// </summary>
         /// <param name="fileName">File to read.</param>
         /// <param name="data">Lines to write to the file.</param>
-        static void WriteFileLines(string fileName, string[] lines)
+        static bool WriteFileLines(string fileName, string[] lines)
         {
-            bool cardMounted = false;
+            //bool cardMounted = false;
             StreamWriter FileHandle = null;
 
             try
@@ -2042,6 +2301,7 @@ namespace Oakhill_Rover
                     Debug.Print("Card not mounted!");
                     //roverSDCARD.Mount();
                     // Thread.Sleep(100);
+                    return false;
                 }
 
                 //cardMounted = Program.roverSDCARD.Mount();
@@ -2071,11 +2331,13 @@ namespace Oakhill_Rover
             catch (Exception)
             {
                 Debug.Print("Error: No File Handle.");
+                return false;
             }
 
             // Flush everything to make sure we are starting fresh.
             //ps.UnmountFileSystem();
             Thread.Sleep(10);
+            return true;
 
             //ps.Dispose();
         }
@@ -2085,53 +2347,57 @@ namespace Oakhill_Rover
         /// </summary>
         /// <param name="fileName">File to read.</param>
         /// <param name="numLines">Number of lines to read from the file.</param>
-        public string[] ReadFileLines(string fileName, int numLines)
+        static public string[] ReadFileLines(string fileName, int numLines)
         {
             string[] buffer = new string[numLines];
             //ps.MountFileSystem();
-            Debug.Print("Reading File Lines..." + fileName);
-            StreamReader FileHandle = null;
 
-            Debug.Print("Looking if " + fileName + " exists.");
-
-            if (!File.Exists(SD_ROOT_DIRECTORY + "\\" + fileName))
-                return null;
-
-            FileHandle = new StreamReader(SD_ROOT_DIRECTORY + "\\" + fileName);
-
-            for (int i = 0; i < buffer.Length; i++)
+            try
             {
-                buffer[i] = FileHandle.ReadLine();
-                if (buffer[i] == "")
-                    break;
+                if (!roverSDCARD.IsCardMounted)
+                {
+                    Debug.Print("Card not mounted!");
+                    //roverSDCARD.Mount();
+                    // Thread.Sleep(100);
+                    return null;
+                }
+
+                StreamReader FileHandle = null;
+
+                Debug.Print("Looking if " + fileName + " exists.");
+
+                if (!File.Exists(SD_ROOT_DIRECTORY + "\\" + fileName))
+                    return null;
+
+                FileHandle = new StreamReader(SD_ROOT_DIRECTORY + "\\" + fileName);
+
+                Debug.Print("Reading File Lines..." + fileName);
+                for (int i = 0; i < buffer.Length; i++)
+                {
+                    buffer[i] = FileHandle.ReadLine();
+                    if (buffer[i] == "")
+                        break;
+                }
+
+                FileHandle.Close();
+
+                Thread.Sleep(500);
+                //ps.UnmountFileSystem();
+                //ps.Dispose();
+
             }
-
-            FileHandle.Close();
-
-            Thread.Sleep(500);
-            //ps.UnmountFileSystem();
-            //ps.Dispose();
+            catch (Exception)
+            {
+                Debug.Print("Could not read SD card file!");
+                return null;
+            }
 
             return buffer;
         }
 
-        public void processTimer()
+        static public void filter()
         {
-            //DateTime start_time;
-            //DateTime end_time;
-            //TimeSpan ts;
 
-            //start_time = DateTime.Now;
-
-            ////do some timed stuff
-
-            //end_time = DateTime.Now;
-            //ts = end_time - start_time;
-
-            //Debug.Print("Write Speed >>>");
-            //Debug.Print("Total time: " + ts.ToString());
-            //Debug.Print("Total time in seconds: " + ((float)ts.Ticks / TimeSpan.TicksPerSecond).ToString() + " seconds");
-            ////Debug.Print("Speed: " + (((float)1024) / ((float)ts.Ticks / TimeSpan.TicksPerSecond)).ToString() + " KBytes/s");
         }
 
         /*
